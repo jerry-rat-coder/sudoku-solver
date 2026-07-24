@@ -11,8 +11,8 @@ import {
 } from "./model.ts";
 import {
   FORCING_TECHNIQUES,
-  findForcingChain,
   findForcingNet,
+  findNishioChain,
 } from "./forcing.ts";
 import {
   TECHNIQUE_CATALOG as REGISTERED_TECHNIQUES,
@@ -36,7 +36,7 @@ export function findNextStepForSnapshot(
   };
   return (
     findNextRegisteredStep(board) ??
-    findForcingChain(board) ??
+    findNishioChain(board) ??
     findForcingNet(board)
   );
 }
@@ -150,7 +150,7 @@ export function solveSudoku(
     // named, lower-weight techniques are exhausted.
     const nextStep =
       findNextRegisteredStep(board) ??
-      findForcingChain(board) ??
+      findNishioChain(board) ??
       findForcingNet(board);
     if (!nextStep) {
       return { status: "stuck", snapshots, steps, issues: [] };

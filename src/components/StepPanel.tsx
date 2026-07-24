@@ -153,7 +153,7 @@ const CATEGORY_LABELS: Record<TechniqueCategory, string> = {
   fish: "鱼形技巧",
   wing: "翼形技巧",
   chain: "强弱链",
-  forcing: "反证推理",
+  forcing: "链式反证",
 };
 
 function ProofSummary({
@@ -164,26 +164,45 @@ function ProofSummary({
   onFocusCell: (cell: number) => void;
 }) {
   if (!step.proof) return null;
-  const preview = step.proof.path.slice(0, 8);
+  const preview = step.proof.literals.slice(0, 14);
   return (
     <div className="proof-summary">
-      <p className="section-label">证明路径</p>
+      <p className="section-label">
+        {step.proof.mode === "nishio" ? "真假候选因果链" : "证明树摘要"}
+      </p>
       <div className="proof-path">
-        {preview.map(({ cell, digit }, index) => (
-          <span key={`${cell}-${digit}-${index}`}>
-            {index > 0 ? <i aria-hidden="true">→</i> : null}
-            <button type="button" onClick={() => onFocusCell(cell)}>
-              {toCellName(cell)}={digit}
+        {preview.map((literal, index) => (
+          <span
+            className={`proof-literal ${literal.state} ${literal.role}`}
+            key={`${literal.candidate.cell}-${literal.candidate.digit}-${literal.state}-${index}`}
+          >
+            <button
+              type="button"
+              onClick={() => onFocusCell(literal.candidate.cell)}
+              title={
+                literal.parents.length
+                  ? `由节点 ${literal.parents.map((parent) => parent + 1).join("、")} 推出`
+                  : "证明起点"
+              }
+            >
+              {toCellName(literal.candidate.cell)}
+              {literal.state === "true" ? "=" : "≠"}
+              {literal.candidate.digit}
             </button>
           </span>
         ))}
-        {step.proof.path.length > preview.length ? <em>…</em> : null}
+        {step.proof.literals.length > preview.length ? <em>…</em> : null}
       </div>
       <p className="proof-stats">
-        {step.proof.mode === "chain"
-          ? "确定性传播直接产生矛盾"
+        {step.proof.mode === "nishio"
+          ? `共 ${step.proof.literals.length} 个可追溯候选文字；实线为强推导，虚线为弱排除。`
           : `已核验 ${step.proof.exploredBranches} 个分支，最大嵌套深度 ${step.proof.maxDepth}`}
       </p>
+      {step.proof.conflict ? (
+        <p className="proof-conflict">
+          冲突：{step.proof.conflict.message}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -269,7 +288,8 @@ export function StepPanel({
               <span>2–4 数组</span>
               <span>鱼形</span>
               <span>翼形</span>
-              <span>染色与链</span>
+              <span>AIC 强弱链</span>
+              <span>西尾链</span>
               <span>强制网</span>
             </div>
           </div>

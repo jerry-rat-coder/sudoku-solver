@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CELL_UNITS,
   TECHNIQUE_CATALOG,
   bit,
+  countBits,
   digitInMask,
   findNextStepForSnapshot,
   solveSudoku,
@@ -49,6 +51,7 @@ test("the master example necessarily demonstrates high-order reasoning", () => {
 
   assert.equal(result.status, "solved");
   assert.ok(techniques.has("xy-chain"));
+  assert.ok(techniques.has("aic"));
   assert.ok(techniques.has("forcing-net"));
   assert.ok(
     result.steps.some(
@@ -94,7 +97,7 @@ test("a very hard unique puzzle is solved through proof-producing forcing logic"
 
   const forcingSteps = result.steps.filter(
     (step) =>
-      step.technique === "forcing-chain" ||
+      step.technique === "nishio-chain" ||
       step.technique === "forcing-net",
   );
   assert.ok(forcingSteps.length > 0);
@@ -102,6 +105,20 @@ test("a very hard unique puzzle is solved through proof-producing forcing logic"
     assert.ok(step.proof);
     assert.deepEqual(step.removed, [step.proof.conclusion]);
     assert.ok(step.proof.path.length > 0);
+    assert.ok(
+      !step.explanation.premise.includes("暂时假设") &&
+        !step.explanation.reasoning.includes("基础落数传播"),
+    );
+    if (step.technique === "nishio-chain") {
+      assert.ok(step.proof.conflict);
+      assert.ok(step.proof.literals.length > 1);
+      for (const [nodeIndex, literal] of step.proof.literals.entries()) {
+        if (literal.role !== "origin") {
+          assert.ok(literal.parents.length > 0);
+          assert.ok(literal.parents.every((parent) => parent < nodeIndex));
+        }
+      }
+    }
   }
 });
 
@@ -133,6 +150,89 @@ test("every recorded effect is valid in its pre-step snapshot", () => {
         Number(AI_ESCARGOT_SOLUTION[removed.cell]),
         removed.digit,
       );
+    }
+  }
+});
+
+test("AIC links alternate correctly and every Nishio edge has a causal basis", () => {
+  const result = solveSudoku(parsePuzzle(AI_ESCARGOT));
+  const candidatesWeaklyLinked = (left, right) =>
+    (left.cell === right.cell && left.digit !== right.digit) ||
+    (left.digit === right.digit &&
+      CELL_UNITS[left.cell].some((unit) => unit.cells.includes(right.cell)));
+
+  const aicSteps = result.steps.filter((step) => step.technique === "aic");
+  assert.ok(aicSteps.length > 0);
+  for (const step of aicSteps) {
+    const before = result.snapshots[result.steps.indexOf(step)];
+    assert.equal(step.links[0].type, "strong");
+    assert.equal(step.links.at(-1).type, "strong");
+    for (const [index, link] of step.links.entries()) {
+      assert.equal(link.type, index % 2 === 0 ? "strong" : "weak");
+      if (link.type === "weak") {
+        assert.ok(candidatesWeaklyLinked(link.from, link.to));
+        continue;
+      }
+      const cellStrong =
+        link.from.cell === link.to.cell &&
+        countBits(before.candidates[link.from.cell]) === 2;
+      const unitStrong =
+        link.from.digit === link.to.digit &&
+        CELL_UNITS[link.from.cell].some(
+          (unit) =>
+            unit.cells.includes(link.to.cell) &&
+            unit.cells.filter(
+              (cell) =>
+                before.values[cell] === 0 &&
+                digitInMask(before.candidates[cell], link.from.digit),
+            ).length === 2,
+        );
+      assert.ok(cellStrong || unitStrong);
+    }
+    const first = step.links[0].from;
+    const last = step.links.at(-1).to;
+    assert.ok(
+      step.removed.every(
+        (candidate) =>
+          candidatesWeaklyLinked(candidate, first) &&
+          candidatesWeaklyLinked(candidate, last),
+      ),
+    );
+  }
+
+  const nishioSteps = result.steps.filter(
+    (step) => step.technique === "nishio-chain",
+  );
+  assert.ok(nishioSteps.length > 0);
+  for (const step of nishioSteps) {
+    for (const [nodeIndex, literal] of step.proof.literals.entries()) {
+      for (const parentIndex of literal.parents) {
+        const parent = step.proof.literals[parentIndex];
+        assert.ok(parentIndex < nodeIndex);
+        if (literal.reason === "weak-link") {
+          assert.equal(parent.state, "true");
+          assert.equal(literal.state, "false");
+          assert.ok(
+            candidatesWeaklyLinked(parent.candidate, literal.candidate),
+          );
+        } else if (literal.reason === "cell-single") {
+          assert.equal(parent.state, "false");
+          assert.equal(literal.state, "true");
+          assert.equal(parent.candidate.cell, literal.candidate.cell);
+        } else if (literal.reason === "unit-single") {
+          assert.equal(parent.state, "false");
+          assert.equal(literal.state, "true");
+          assert.equal(parent.candidate.digit, literal.candidate.digit);
+          assert.ok(
+            literal.unit &&
+              CELL_UNITS[parent.candidate.cell].some(
+                (unit) =>
+                  unit.kind === literal.unit.kind &&
+                  unit.index === literal.unit.index,
+              ),
+          );
+        }
+      }
     }
   }
 });

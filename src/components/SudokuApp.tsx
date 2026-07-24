@@ -352,9 +352,9 @@ export default function SudokuApp() {
 
       <footer className="app-footer">
         <p>
-          v0.2 · 技巧库：基础、交叉、数组、鱼形、翼形、染色、链与强制网
+          v0.3 · 技巧库：基础、交叉、数组、鱼形、翼形、AIC、西尾链与强制网
         </p>
-        <p>每次变化后从最简单技巧重扫；高阶分支只输出有矛盾证明的结论。</p>
+        <p>每次变化后从最简单技巧重扫；高阶反证保留可追溯的因果节点。</p>
       </footer>
     </main>
   );

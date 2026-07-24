@@ -30,7 +30,8 @@ export type TechniqueId =
   | "simple-coloring"
   | "x-chain"
   | "xy-chain"
-  | "forcing-chain"
+  | "aic"
+  | "nishio-chain"
   | "forcing-net";
 
 export interface CandidateRef {
@@ -58,12 +59,32 @@ export interface ChainLink {
   type: "strong" | "weak" | "implication";
 }
 
+export interface ProofLiteral {
+  candidate: CandidateRef;
+  state: "true" | "false";
+  role: "origin" | "derived" | "conflict";
+  reason: "origin" | "weak-link" | "cell-single" | "unit-single" | "branch";
+  parents: readonly number[];
+  unit?: UnitRef;
+}
+
+export interface ProofConflict {
+  kind: "candidate" | "cell" | "unit";
+  message: string;
+  cells: readonly number[];
+  nodeIndexes: readonly number[];
+  unit?: UnitRef;
+  digit?: Digit;
+}
+
 export interface ForcingProof {
-  mode: "chain" | "net";
+  mode: "nishio" | "net";
   assumption: CandidateRef;
   conclusion: CandidateRef;
   contradiction: string;
   path: readonly CandidateRef[];
+  literals: readonly ProofLiteral[];
+  conflict?: ProofConflict;
   exploredBranches: number;
   maxDepth: number;
 }

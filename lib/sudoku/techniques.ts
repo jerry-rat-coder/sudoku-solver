@@ -920,6 +920,168 @@ function findXyChain(board: MutableBoard): SolveStep | null {
   return null;
 }
 
+function candidateNodeId({ cell, digit }: CandidateRef) {
+  return cell * 9 + digit - 1;
+}
+
+function candidatesHaveWeakLink(left: CandidateRef, right: CandidateRef) {
+  return (
+    (left.cell === right.cell && left.digit !== right.digit) ||
+    (left.digit === right.digit &&
+      left.cell !== right.cell &&
+      cellsSeeEachOther(left.cell, right.cell))
+  );
+}
+
+function findAic(board: MutableBoard): SolveStep | null {
+  const nodes = Array.from({ length: 81 }, (_, cell) =>
+    board.values[cell] === 0
+      ? maskToDigits(board.candidates[cell]).map((digit) => ({ cell, digit }))
+      : [],
+  )
+    .flat()
+    .sort(
+      (left, right) =>
+        candidateNodeId(left) - candidateNodeId(right),
+    );
+  const nodeById = new Map(
+    nodes.map((candidate) => [candidateNodeId(candidate), candidate]),
+  );
+  const strongAdjacency = new Map<number, Set<number>>();
+  const addStrongLink = (left: CandidateRef, right: CandidateRef) => {
+    const leftId = candidateNodeId(left);
+    const rightId = candidateNodeId(right);
+    strongAdjacency.set(
+      leftId,
+      new Set([...(strongAdjacency.get(leftId) ?? []), rightId]),
+    );
+    strongAdjacency.set(
+      rightId,
+      new Set([...(strongAdjacency.get(rightId) ?? []), leftId]),
+    );
+  };
+
+  for (let cell = 0; cell < 81; cell += 1) {
+    if (
+      board.values[cell] !== 0 ||
+      countBits(board.candidates[cell]) !== 2
+    ) {
+      continue;
+    }
+    const [left, right] = maskToDigits(board.candidates[cell]);
+    addStrongLink({ cell, digit: left }, { cell, digit: right });
+  }
+
+  for (const unit of UNITS) {
+    for (const digit of DIGITS) {
+      if (unit.cells.some((cell) => board.values[cell] === digit)) continue;
+      const cells = unit.cells.filter(
+        (cell) =>
+          board.values[cell] === 0 &&
+          digitInMask(board.candidates[cell], digit),
+      );
+      if (cells.length === 2) {
+        addStrongLink(
+          { cell: cells[0], digit },
+          { cell: cells[1], digit },
+        );
+      }
+    }
+  }
+
+  const weakAdjacency = new Map<number, number[]>();
+  for (const left of nodes) {
+    const linked = nodes
+      .filter(
+        (right) =>
+          candidateNodeId(left) !== candidateNodeId(right) &&
+          candidatesHaveWeakLink(left, right),
+      )
+      .map(candidateNodeId)
+      .sort((a, b) => a - b);
+    weakAdjacency.set(candidateNodeId(left), linked);
+  }
+
+  const maximumNodes = 24;
+  for (const start of nodes) {
+    const startId = candidateNodeId(start);
+    const visit = (
+      pathIds: number[],
+      edgeTypes: Array<"strong" | "weak">,
+      expectStrong: boolean,
+    ): SolveStep | null => {
+      if (pathIds.length >= maximumNodes) return null;
+      const currentId = pathIds[pathIds.length - 1];
+      const adjacent = expectStrong
+        ? [...(strongAdjacency.get(currentId) ?? [])].sort((a, b) => a - b)
+        : (weakAdjacency.get(currentId) ?? []);
+
+      for (const nextId of adjacent) {
+        if (pathIds.includes(nextId)) continue;
+        const nextPath = [...pathIds, nextId];
+        const nextEdges = [
+          ...edgeTypes,
+          expectStrong ? ("strong" as const) : ("weak" as const),
+        ];
+        const nextExpectStrong = !expectStrong;
+
+        // An AIC that starts and ends with a strong link has endpoints that
+        // cannot both be false. Any candidate weak-linked to both is false.
+        if (nextExpectStrong === false && nextPath.length >= 4) {
+          const endpoint = nodeById.get(nextId)!;
+          const pathSet = new Set(nextPath);
+          const removed = nodes.filter(
+            (candidate) =>
+              !pathSet.has(candidateNodeId(candidate)) &&
+              candidatesHaveWeakLink(candidate, start) &&
+              candidatesHaveWeakLink(candidate, endpoint),
+          );
+          if (removed.length > 0) {
+            const path = nextPath.map((id) => nodeById.get(id)!);
+            const links: ChainLink[] = nextEdges.map((type, index) => ({
+              from: path[index],
+              to: path[index + 1],
+              type,
+            }));
+            const cells = uniqueNumbers(path.map(({ cell }) => cell));
+            return stepFor(currentDefinition("aic"), {
+              id: `aic-${nextPath.join("-")}`,
+              action: "eliminate",
+              digits: uniqueNumbers(
+                path.map(({ digit }) => digit),
+              ) as Digit[],
+              cells,
+              focusCells: [start.cell, endpoint.cell],
+              relatedCells: uniqueNumbers([
+                ...cells,
+                ...removed.map(({ cell }) => cell),
+              ]),
+              evidence: path,
+              removed,
+              links,
+              explanation: {
+                premise: `从 ${toCellName(start.cell)}(${start.digit}) 到 ${toCellName(endpoint.cell)}(${endpoint.digit}) 构成强、弱链接严格交替的 AIC。`,
+                reasoning:
+                  "链首尾都是强链接，因此两个端点不可能同时为假，至少一个端点必须为真。",
+                conclusion:
+                  "同时与两个端点弱相连的候选必为假，可以删除。",
+              },
+            });
+          }
+        }
+
+        const found = visit(nextPath, nextEdges, nextExpectStrong);
+        if (found) return found;
+      }
+      return null;
+    };
+
+    const found = visit([startId], [], true);
+    if (found) return found;
+  }
+  return null;
+}
+
 const TECHNIQUES: RegisteredTechnique[] = [
   define(
     {
@@ -1100,6 +1262,17 @@ const TECHNIQUES: RegisteredTechnique[] = [
       description: "四个基础单位中的同一候选锁定在四个覆盖单位。",
     },
     (board) => findFish(board, 4, "jellyfish"),
+  ),
+  define(
+    {
+      id: "aic",
+      label: "AIC 强弱链",
+      weight: 160,
+      category: "chain",
+      description:
+        "候选文字沿强、弱链接交替连接，以首尾至少一真排除共同弱邻居。",
+    },
+    findAic,
   ),
 ];
 

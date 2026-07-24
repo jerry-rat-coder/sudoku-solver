@@ -35,6 +35,19 @@ function refKey(cell: number, digit: number) {
   return `${cell}-${digit}`;
 }
 
+function boxIndex(cell: number) {
+  return (
+    Math.floor(Math.floor(cell / 9) / 3) * 3 +
+    Math.floor((cell % 9) / 3)
+  );
+}
+
+function commonBox(cells: readonly number[]) {
+  if (cells.length === 0) return null;
+  const first = boxIndex(cells[0]);
+  return cells.every((cell) => boxIndex(cell) === first) ? first : null;
+}
+
 function candidatePoint({ cell, digit }: CandidateRef) {
   const cellRow = Math.floor(cell / 9);
   const cellColumn = cell % 9;
@@ -65,6 +78,37 @@ export function SudokuBoard({
       refKey(cell, digit),
     ),
   );
+  const proofCandidates = new Map<
+    string,
+    "origin" | "true" | "false" | "conflict"
+  >();
+  for (const literal of currentStep?.proof?.literals ?? []) {
+    const key = refKey(
+      literal.candidate.cell,
+      literal.candidate.digit,
+    );
+    const role =
+      literal.role === "conflict"
+        ? "conflict"
+        : literal.role === "origin"
+          ? "origin"
+          : literal.state;
+    const existing = proofCandidates.get(key);
+    if (
+      !existing ||
+      role === "conflict" ||
+      (role === "origin" && existing !== "conflict")
+    ) {
+      proofCandidates.set(key, role);
+    }
+  }
+  const removedBox = commonBox(
+    (currentStep?.removed ?? []).map(({ cell }) => cell),
+  );
+  const conflictBox =
+    currentStep?.proof?.conflict?.unit?.kind === "box"
+      ? currentStep.proof.conflict.unit.index
+      : null;
   const placedCell = currentStep?.placed?.cell;
 
   return (
@@ -81,6 +125,8 @@ export function SudokuBoard({
             row % 3 === 2 && row !== 8 ? "box-edge-bottom" : "",
             isSelectionPeer(cell, selectedCell) ? "selection-peer" : "",
             relatedCells.has(cell) ? "step-related" : "",
+            removedBox === boxIndex(cell) ? "step-box-context" : "",
+            conflictBox === boxIndex(cell) ? "step-box-conflict" : "",
             focusCells.has(cell) ? "step-focus" : "",
             isSelected ? "selected" : "",
             conflicts.has(cell) ? "conflict" : "",
@@ -118,6 +164,7 @@ export function SudokuBoard({
                   {DIGITS.map((digit) => {
                     const key = refKey(cell, digit);
                     const isRemoved = removedCandidates.has(key);
+                    const proofState = proofCandidates.get(key);
                     const isVisible =
                       digitInMask(candidates[cell] ?? 0, digit) || isRemoved;
                     return (
@@ -125,8 +172,11 @@ export function SudokuBoard({
                         className={[
                           "candidate",
                           isVisible ? "visible" : "",
-                          evidenceCandidates.has(key) ? "linked" : "",
+                          evidenceCandidates.has(key) && !proofState
+                            ? "linked"
+                            : "",
                           isRemoved ? "removed" : "",
+                          proofState ? `proof-${proofState}` : "",
                         ]
                           .filter(Boolean)
                           .join(" ")}
@@ -152,7 +202,7 @@ export function SudokuBoard({
         >
           <defs>
             <marker
-              id="chain-arrow"
+              id="chain-arrow-strong"
               viewBox="0 0 10 10"
               refX="8"
               refY="5"
@@ -160,7 +210,32 @@ export function SudokuBoard({
               markerHeight="5"
               orient="auto-start-reverse"
             >
-              <path d="M 0 0 L 10 5 L 0 10 z" />
+              <path className="arrow-strong" d="M 0 0 L 10 5 L 0 10 z" />
+            </marker>
+            <marker
+              id="chain-arrow-weak"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path className="arrow-weak" d="M 0 0 L 10 5 L 0 10 z" />
+            </marker>
+            <marker
+              id="chain-arrow-implication"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path
+                className="arrow-implication"
+                d="M 0 0 L 10 5 L 0 10 z"
+              />
             </marker>
           </defs>
           {currentStep.links.map((link, index) => {
@@ -174,7 +249,9 @@ export function SudokuBoard({
                 x2={to.x}
                 y2={to.y}
                 markerEnd={
-                  link.type === "implication" ? "url(#chain-arrow)" : undefined
+                  currentStep.proof
+                    ? `url(#chain-arrow-${link.type})`
+                    : undefined
                 }
                 key={`${link.type}-${link.from.cell}-${link.from.digit}-${link.to.cell}-${link.to.digit}-${index}`}
               />

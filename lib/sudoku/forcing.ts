@@ -11,26 +11,32 @@ import {
   maskToDigits,
   toCellName,
   type CandidateRef,
+  type ChainLink,
   type Digit,
+  type ForcingProof,
   type MutableBoard,
+  type ProofConflict,
+  type ProofLiteral,
   type SolveStep,
   type TechniqueDefinition,
+  type Unit,
 } from "./model.ts";
 
 export const FORCING_TECHNIQUES: readonly TechniqueDefinition[] = [
   {
-    id: "forcing-chain",
-    label: "矛盾链",
-    weight: 800,
+    id: "nishio-chain",
+    label: "西尾强制链",
+    weight: 300,
     category: "forcing",
-    description: "假设一个候选为真，仅用确定性传播即可推出矛盾。",
+    description:
+      "从一个待判候选建立带因果父节点的真假候选链，以明确冲突反证。",
   },
   {
     id: "forcing-net",
     label: "强制网",
     weight: 900,
     category: "forcing",
-    description: "穷尽假设下的所有逻辑分支，以反证树排除候选。",
+    description: "穷尽候选下的所有逻辑分支，以完整反证树排除候选。",
   },
 ];
 
@@ -45,6 +51,17 @@ interface SearchStats {
   maxDepth: number;
   samplePath: CandidateRef[];
   contradiction: string;
+}
+
+interface CausalProof {
+  literals: ProofLiteral[];
+  conflict: ProofConflict;
+}
+
+function unitName(unit: Pick<Unit, "kind" | "index">) {
+  const kind =
+    unit.kind === "row" ? "行" : unit.kind === "column" ? "列" : "宫";
+  return `第 ${unit.index + 1} ${kind}`;
 }
 
 function firstContradiction(board: MutableBoard) {
@@ -70,9 +87,7 @@ function firstContradiction(board: MutableBoard) {
           digitInMask(board.candidates[cell], digit),
       );
       if (!hasPosition) {
-        const unitName =
-          unit.kind === "row" ? "行" : unit.kind === "column" ? "列" : "宫";
-        return `第 ${unit.index + 1} ${unitName}中的数字 ${digit} 已无可放置位置`;
+        return `${unitName(unit)}中的数字 ${digit} 已无可放置位置`;
       }
     }
   }
@@ -174,29 +189,256 @@ function orderedCandidates(board: MutableBoard) {
     );
 }
 
-function linksFromPath(path: readonly CandidateRef[]) {
-  return path.slice(0, -1).map((candidate, index) => ({
-    from: candidate,
-    to: path[index + 1],
-    type: "implication" as const,
-  }));
+function literalId({ cell, digit }: CandidateRef) {
+  return cell * 9 + digit - 1;
 }
 
-function forcingStep(
+function buildCausalNishioProof(
+  board: MutableBoard,
   assumption: CandidateRef,
-  mode: "chain" | "net",
-  trace: readonly CandidateRef[],
-  contradiction: string,
-  exploredBranches: number,
-  maxDepth: number,
+): CausalProof | null {
+  const initialCandidates = Array.from({ length: 729 }, () => false);
+  const cellCandidates: number[][] = Array.from({ length: 81 }, () => []);
+  for (let cell = 0; cell < 81; cell += 1) {
+    if (board.values[cell] !== 0) continue;
+    for (const digit of maskToDigits(board.candidates[cell])) {
+      const id = literalId({ cell, digit });
+      initialCandidates[id] = true;
+      cellCandidates[cell].push(id);
+    }
+  }
+
+  const states = new Int8Array(729);
+  const trueNodes = new Int32Array(729).fill(-1);
+  const falseNodes = new Int32Array(729).fill(-1);
+  const literals: ProofLiteral[] = [];
+  let conflict: ProofConflict | undefined;
+
+  const candidateForId = (id: number): CandidateRef => ({
+    cell: Math.floor(id / 9),
+    digit: ((id % 9) + 1) as Digit,
+  });
+
+  const addLiteral = (
+    candidate: CandidateRef,
+    state: "true" | "false",
+    reason: ProofLiteral["reason"],
+    parents: readonly number[],
+    unit?: ProofLiteral["unit"],
+  ) => {
+    if (conflict) return -1;
+    const id = literalId(candidate);
+    const desired = state === "true" ? 1 : -1;
+    const existingOpposite =
+      state === "true" ? falseNodes[id] : trueNodes[id];
+    if (states[id] === desired) {
+      return state === "true" ? trueNodes[id] : falseNodes[id];
+    }
+
+    const nodeIndex = literals.length;
+    literals.push({
+      candidate,
+      state,
+      role: nodeIndex === 0 ? "origin" : "derived",
+      reason,
+      parents: [...parents],
+      unit,
+    });
+
+    if (existingOpposite >= 0) {
+      conflict = {
+        kind: "candidate",
+        message: `${toCellName(candidate.cell)}(${candidate.digit}) 被同时推出为真和为假`,
+        cells: [candidate.cell],
+        nodeIndexes: [existingOpposite, nodeIndex],
+      };
+      return nodeIndex;
+    }
+
+    states[id] = desired;
+    if (state === "true") trueNodes[id] = nodeIndex;
+    else falseNodes[id] = nodeIndex;
+    return nodeIndex;
+  };
+
+  const findEmptyCellConflict = () => {
+    for (let cell = 0; cell < 81; cell += 1) {
+      if (board.values[cell] !== 0 || cellCandidates[cell].length === 0) {
+        continue;
+      }
+      if (cellCandidates[cell].every((id) => states[id] === -1)) {
+        const nodeIndexes = cellCandidates[cell].map((id) => falseNodes[id]);
+        return {
+          kind: "cell" as const,
+          message: `${toCellName(cell)} 的所有候选都被推出为假`,
+          cells: [cell],
+          nodeIndexes,
+        };
+      }
+    }
+    return undefined;
+  };
+
+  const findEmptyUnitConflict = () => {
+    for (const unit of UNITS) {
+      for (const digit of DIGITS) {
+        if (unit.cells.some((cell) => board.values[cell] === digit)) continue;
+        const ids = unit.cells
+          .filter((cell) => board.values[cell] === 0)
+          .map((cell) => literalId({ cell, digit }))
+          .filter((id) => initialCandidates[id]);
+        if (ids.length > 0 && ids.every((id) => states[id] === -1)) {
+          return {
+            kind: "unit" as const,
+            message: `${unitName(unit)}中的数字 ${digit} 所有位置都被推出为假`,
+            cells: ids.map((id) => candidateForId(id).cell),
+            nodeIndexes: ids.map((id) => falseNodes[id]),
+            unit: { kind: unit.kind, index: unit.index },
+            digit,
+          };
+        }
+      }
+    }
+    return undefined;
+  };
+
+  addLiteral(assumption, "true", "origin", []);
+  for (let cursor = 0; cursor < literals.length && !conflict; cursor += 1) {
+    const literal = literals[cursor];
+    if (literal.state === "true") {
+      const { cell, digit } = literal.candidate;
+      for (const id of cellCandidates[cell]) {
+        const other = candidateForId(id);
+        if (other.digit !== digit) {
+          addLiteral(other, "false", "weak-link", [cursor]);
+          if (conflict) break;
+        }
+      }
+      if (conflict) break;
+      for (const peer of PEERS[cell]) {
+        const id = literalId({ cell: peer, digit });
+        if (initialCandidates[id]) {
+          addLiteral({ cell: peer, digit }, "false", "weak-link", [cursor]);
+          if (conflict) break;
+        }
+      }
+    }
+    if (conflict) break;
+
+    conflict = findEmptyCellConflict() ?? findEmptyUnitConflict();
+    if (conflict) break;
+
+    for (let cell = 0; cell < 81 && !conflict; cell += 1) {
+      if (board.values[cell] !== 0) continue;
+      const ids = cellCandidates[cell];
+      if (ids.some((id) => states[id] === 1)) continue;
+      const remaining = ids.filter((id) => states[id] !== -1);
+      if (remaining.length === 1) {
+        const parents = ids
+          .filter((id) => states[id] === -1)
+          .map((id) => falseNodes[id]);
+        addLiteral(
+          candidateForId(remaining[0]),
+          "true",
+          "cell-single",
+          parents,
+        );
+      }
+    }
+    if (conflict) break;
+
+    for (const unit of UNITS) {
+      if (conflict) break;
+      for (const digit of DIGITS) {
+        if (unit.cells.some((cell) => board.values[cell] === digit)) continue;
+        const ids = unit.cells
+          .filter((cell) => board.values[cell] === 0)
+          .map((cell) => literalId({ cell, digit }))
+          .filter((id) => initialCandidates[id]);
+        if (ids.some((id) => states[id] === 1)) continue;
+        const remaining = ids.filter((id) => states[id] !== -1);
+        if (remaining.length === 1) {
+          const parents = ids
+            .filter((id) => states[id] === -1)
+            .map((id) => falseNodes[id]);
+          addLiteral(
+            candidateForId(remaining[0]),
+            "true",
+            "unit-single",
+            parents,
+            { kind: unit.kind, index: unit.index },
+          );
+          if (conflict) break;
+        }
+      }
+    }
+  }
+
+  if (!conflict) return null;
+
+  const included = new Set<number>();
+  const includeAncestors = (nodeIndex: number) => {
+    if (included.has(nodeIndex) || nodeIndex < 0) return;
+    included.add(nodeIndex);
+    for (const parent of literals[nodeIndex].parents) includeAncestors(parent);
+  };
+  for (const nodeIndex of conflict.nodeIndexes) includeAncestors(nodeIndex);
+  const ordered = [...included].sort((left, right) => left - right);
+  const remap = new Map(ordered.map((oldIndex, index) => [oldIndex, index]));
+  const conflictNodes = new Set(conflict.nodeIndexes);
+  const prunedLiterals = ordered.map((oldIndex, index): ProofLiteral => ({
+    ...literals[oldIndex],
+    role:
+      index === 0
+        ? "origin"
+        : conflictNodes.has(oldIndex)
+          ? "conflict"
+          : "derived",
+    parents: literals[oldIndex].parents
+      .filter((parent) => remap.has(parent))
+      .map((parent) => remap.get(parent)!),
+  }));
+  const prunedConflict: ProofConflict = {
+    ...conflict,
+    nodeIndexes: conflict.nodeIndexes.map((index) => remap.get(index)!),
+  };
+
+  return { literals: prunedLiterals, conflict: prunedConflict };
+}
+
+function linksFromProof(literals: readonly ProofLiteral[]): ChainLink[] {
+  const links: ChainLink[] = [];
+  for (const [childIndex, child] of literals.entries()) {
+    for (const parentIndex of child.parents) {
+      const parent = literals[parentIndex];
+      if (!parent || parentIndex >= childIndex) continue;
+      links.push({
+        from: parent.candidate,
+        to: child.candidate,
+        type:
+          child.reason === "weak-link"
+            ? "weak"
+            : child.parents.length === 1
+              ? "strong"
+              : "implication",
+      });
+    }
+  }
+  return links;
+}
+
+function nishioStep(
+  assumption: CandidateRef,
+  causalProof: CausalProof,
 ): SolveStep {
-  const definition = FORCING_TECHNIQUES[mode === "chain" ? 0 : 1];
-  const path = trace.length > 0 ? [...trace] : [assumption];
-  const pathPreview = path.slice(0, 18);
-  const branchDescription =
-    mode === "chain"
-      ? "基础落数传播"
-      : `${exploredBranches} 个穷尽分支、最大嵌套深度 ${maxDepth}`;
+  const definition = FORCING_TECHNIQUES[0];
+  const path = causalProof.literals.map(({ candidate }) => candidate);
+  const cells = [
+    ...new Set([
+      ...path.map(({ cell }) => cell),
+      ...causalProof.conflict.cells,
+    ]),
+  ].sort((left, right) => left - right);
 
   return {
     id: `${definition.id}-${assumption.cell}-${assumption.digit}`,
@@ -207,43 +449,35 @@ function forcingStep(
     action: "eliminate",
     digit: assumption.digit,
     digits: [assumption.digit],
-    cells: [...new Set(pathPreview.map(({ cell }) => cell))],
-    focusCells: [assumption.cell],
-    relatedCells: [
-      ...new Set(pathPreview.flatMap(({ cell }) => PEERS[cell])),
-    ].sort((left, right) => left - right),
-    evidence: pathPreview,
+    cells,
+    focusCells: [assumption.cell, ...causalProof.conflict.cells],
+    relatedCells: cells,
+    evidence: path,
     removed: [assumption],
-    links: linksFromPath(pathPreview),
+    links: linksFromProof(causalProof.literals),
     proof: {
-      mode,
+      mode: "nishio",
       assumption,
       conclusion: assumption,
-      contradiction,
+      contradiction: causalProof.conflict.message,
       path,
-      exploredBranches,
-      maxDepth,
+      literals: causalProof.literals,
+      conflict: causalProof.conflict,
+      exploredBranches: 0,
+      maxDepth: 0,
     },
     explanation: {
-      premise: `暂时假设 ${toCellName(assumption.cell)} = ${assumption.digit}。`,
-      reasoning: `沿候选约束进行${branchDescription}后得到矛盾：${contradiction}。`,
-      conclusion: `原假设不成立，删除 ${toCellName(assumption.cell)} 的候选数 ${assumption.digit}。`,
+      premise: `从待判候选 ${toCellName(assumption.cell)}(${assumption.digit}) 为真出发，建立西尾真假候选链。`,
+      reasoning: `沿“真候选排除弱邻居”和“其余位置为假则唯一位置为真”传播，最终冲突：${causalProof.conflict.message}。`,
+      conclusion: `链首候选不能为真，删除 ${toCellName(assumption.cell)} 的候选数 ${assumption.digit}。`,
     },
   };
 }
 
-export function findForcingChain(board: MutableBoard): SolveStep | null {
+export function findNishioChain(board: MutableBoard): SolveStep | null {
   for (const assumption of orderedCandidates(board)) {
-    const result = propagate(board, assumption);
-    if (!result.contradiction) continue;
-    return forcingStep(
-      assumption,
-      "chain",
-      result.trace,
-      result.contradiction,
-      0,
-      0,
-    );
+    const proof = buildCausalNishioProof(board, assumption);
+    if (proof) return nishioStep(assumption, proof);
   }
   return null;
 }
@@ -288,11 +522,7 @@ function hasCompletion(
   stats.maxDepth = Math.max(stats.maxDepth, depth + 1);
   for (const digit of maskToDigits(board.candidates[branchCell])) {
     stats.exploredBranches += 1;
-    const result = propagate(
-      board,
-      { cell: branchCell, digit },
-      trace,
-    );
+    const result = propagate(board, { cell: branchCell, digit }, trace);
     if (result.contradiction) {
       if (stats.samplePath.length === 0) {
         stats.samplePath = result.trace;
@@ -300,15 +530,7 @@ function hasCompletion(
       }
       continue;
     }
-    if (
-      hasCompletion(
-        result.board,
-        result.trace,
-        depth + 1,
-        stats,
-        memo,
-      )
-    ) {
+    if (hasCompletion(result.board, result.trace, depth + 1, stats, memo)) {
       memo.set(key, true);
       return true;
     }
@@ -318,18 +540,65 @@ function hasCompletion(
   return false;
 }
 
+function forcingNetStep(
+  assumption: CandidateRef,
+  path: readonly CandidateRef[],
+  contradiction: string,
+  exploredBranches: number,
+  maxDepth: number,
+): SolveStep {
+  const definition = FORCING_TECHNIQUES[1];
+  const preview = path.slice(0, 18);
+  const proof: ForcingProof = {
+    mode: "net",
+    assumption,
+    conclusion: assumption,
+    contradiction,
+    path,
+    literals: [
+      {
+        candidate: assumption,
+        state: "true",
+        role: "origin",
+        reason: "branch",
+        parents: [],
+      },
+    ],
+    exploredBranches,
+    maxDepth,
+  };
+
+  return {
+    id: `${definition.id}-${assumption.cell}-${assumption.digit}`,
+    technique: definition.id,
+    category: definition.category,
+    label: definition.label,
+    weight: definition.weight,
+    action: "eliminate",
+    digit: assumption.digit,
+    digits: [assumption.digit],
+    cells: [...new Set(preview.map(({ cell }) => cell))],
+    focusCells: [assumption.cell],
+    relatedCells: [...new Set(preview.map(({ cell }) => cell))],
+    evidence: [assumption],
+    removed: [assumption],
+    links: [],
+    proof,
+    explanation: {
+      premise: `以待判候选 ${toCellName(assumption.cell)}(${assumption.digit}) 为根建立穷尽证明树。`,
+      reasoning: `证明树核验了 ${exploredBranches} 个分支（最大深度 ${maxDepth}），每个叶节点都落入矛盾：${contradiction}。`,
+      conclusion: `所有分支均失败，删除 ${toCellName(assumption.cell)} 的候选数 ${assumption.digit}。`,
+    },
+  };
+}
+
 export function findForcingNet(board: MutableBoard): SolveStep | null {
   for (const assumption of orderedCandidates(board)) {
     const initial = propagate(board, assumption);
     if (initial.contradiction) {
-      return forcingStep(
-        assumption,
-        "chain",
-        initial.trace,
-        initial.contradiction,
-        0,
-        0,
-      );
+      const proof = buildCausalNishioProof(board, assumption);
+      if (proof) return nishioStep(assumption, proof);
+      continue;
     }
 
     const stats: SearchStats = {
@@ -347,9 +616,8 @@ export function findForcingNet(board: MutableBoard): SolveStep | null {
     );
     if (hasSolution) continue;
 
-    return forcingStep(
+    return forcingNetStep(
       assumption,
-      "net",
       stats.samplePath.length > 0 ? stats.samplePath : initial.trace,
       stats.contradiction,
       stats.exploredBranches,

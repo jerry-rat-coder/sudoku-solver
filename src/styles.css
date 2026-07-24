@@ -389,6 +389,14 @@ input:focus-visible {
   background: rgb(221 235 226 / 58%);
 }
 
+.sudoku-cell.step-box-context {
+  background: rgb(210 157 45 / 18%);
+}
+
+.sudoku-cell.step-box-conflict {
+  background: rgb(156 63 54 / 20%);
+}
+
 .sudoku-cell.step-focus {
   z-index: 2;
   background: var(--amber-soft);
@@ -479,6 +487,37 @@ input:focus-visible {
   animation: remove-candidate 180ms ease-out both;
 }
 
+.candidate.proof-true {
+  color: #f8fbff;
+  background: #2585b7;
+  box-shadow: 0 0 0 1px #d8f1ff;
+  font-weight: 850;
+}
+
+.candidate.proof-false {
+  color: #201807;
+  background: #e0aa24;
+  box-shadow: 0 0 0 1px #fff1b4;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.candidate.proof-origin {
+  color: #fff;
+  background: #d54d49;
+  box-shadow: 0 0 0 2px #7f2d2a;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.candidate.proof-conflict {
+  color: #fff;
+  background: #9f3333;
+  box-shadow: 0 0 0 2px #f4aaa3;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 @keyframes remove-candidate {
   from {
     opacity: 0.1;
@@ -518,7 +557,15 @@ input:focus-visible {
   stroke-width: 2.5;
 }
 
-.chain-overlay marker path {
+.chain-overlay marker path.arrow-strong {
+  fill: var(--jade-deep);
+}
+
+.chain-overlay marker path.arrow-weak {
+  fill: #a77922;
+}
+
+.chain-overlay marker path.arrow-implication {
   fill: var(--jade-deep);
 }
 
@@ -780,6 +827,30 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.proof-literal.true button {
+  border-color: #2585b7;
+  color: #185d7f;
+  background: #e8f6fd;
+}
+
+.proof-literal.false button {
+  border-color: #d19a18;
+  color: #75520b;
+  background: #fff6d9;
+}
+
+.proof-literal.origin button {
+  border-color: #d54d49;
+  color: #8c2d2a;
+  background: #fde8e6;
+}
+
+.proof-literal.conflict button {
+  border-color: #9f3333;
+  color: #fff;
+  background: #9f3333;
+}
+
 .proof-path i,
 .proof-path em {
   color: var(--muted);
@@ -792,6 +863,13 @@ input:focus-visible {
   margin: 9px 0 0;
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+.proof-conflict {
+  margin: 8px 0 0;
+  color: #873a36;
+  font-size: 0.76rem;
+  line-height: 1.55;
 }
 
 .explanation-token {
@@ -1128,7 +1206,7 @@ kbd {
   }
 
   .input-toolbar {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 9px;
   }
 
