@@ -1,5 +1,3 @@
-"use client";
-
 import {
   DIGITS,
   digitInMask,
@@ -137,4 +135,3 @@ export function SudokuBoard({
     </div>
   );
 }
-

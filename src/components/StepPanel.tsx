@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import {
   describeUnit,
@@ -333,4 +331,3 @@ export function StepPanel({
     </aside>
   );
 }
-

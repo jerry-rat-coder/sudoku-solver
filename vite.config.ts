@@ -1,5 +1,6 @@
-import vinext from "vinext";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
@@ -13,7 +14,13 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
+  compatibility_date: "2026-05-22",
   compatibility_flags: ["nodejs_compat"],
+  assets: {
+    binding: "ASSETS",
+    not_found_handling: "single-page-application" as const,
+    run_worker_first: true,
+  },
   d1_databases: d1
     ? [
         {
@@ -44,6 +51,11 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
+    resolve: {
+      alias: {
+        "@": fileURLToPath(new URL(".", import.meta.url)),
+      },
+    },
     server: {
       host: "0.0.0.0",
       allowedHosts: ["terminal.local"],
@@ -52,10 +64,10 @@ export default defineConfig(async () => {
         : {}),
     },
     plugins: [
-      vinext(),
+      react(),
       sites(),
       cloudflare({
-        viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
+        viteEnvironment: { name: "server" },
         inspectorPort: false,
         config: localBindingConfig,
       }),

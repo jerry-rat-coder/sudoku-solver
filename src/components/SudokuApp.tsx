@@ -1,8 +1,6 @@
-"use client";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SudokuBoard } from "@/app/components/SudokuBoard";
-import { StepPanel } from "@/app/components/StepPanel";
+import { SudokuBoard } from "@/src/components/SudokuBoard";
+import { StepPanel } from "@/src/components/StepPanel";
 import {
   DIGITS,
   conflictCellsForValues,
