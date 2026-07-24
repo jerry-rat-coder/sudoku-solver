@@ -38,6 +38,25 @@ test("examples exercise both naked and hidden pair eliminations", () => {
   );
 });
 
+test("the master example necessarily demonstrates high-order reasoning", () => {
+  const master = SUDOKU_EXAMPLES.find(
+    (example) => example.name === "强制网挑战",
+  );
+  assert.ok(master);
+
+  const result = solveSudoku(parsePuzzle(master.puzzle));
+  const techniques = new Set(result.steps.map((step) => step.technique));
+
+  assert.equal(result.status, "solved");
+  assert.ok(techniques.has("xy-chain"));
+  assert.ok(techniques.has("forcing-net"));
+  assert.ok(
+    result.steps.some(
+      (step) => step.category === "forcing" && step.proof?.path.length,
+    ),
+  );
+});
+
 test("the same puzzle produces a deterministic technique sequence", () => {
   const puzzle = parsePuzzle(SUDOKU_EXAMPLES[2].puzzle);
   const first = solveSudoku(puzzle);

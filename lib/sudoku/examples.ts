@@ -23,6 +23,12 @@ export const SUDOKU_EXAMPLES: readonly SudokuExample[] = [
     puzzle:
       "530608012000005008008040560800701003020000001700900850060530080000409000300000009",
   },
+  {
+    name: "强制网挑战",
+    difficulty: "大师",
+    puzzle:
+      "100007090030020008009600500005300900010080002600004000300000010040000007007000300",
+  },
 ];
 
 export function parsePuzzle(puzzle: string) {
