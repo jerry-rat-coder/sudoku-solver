@@ -43,6 +43,7 @@ const INITIAL_OCR_PROGRESS: OcrProgress = {
   value: 0,
   message: "准备读取图片",
 };
+const OCR_PROGRESS_STALL_MS = 30_000;
 
 function firstEmpty(values: readonly number[]) {
   const index = values.findIndex((value) => value === 0);
@@ -70,6 +71,7 @@ export default function SudokuApp() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const ocrRunRef = useRef(0);
   const ocrAbortRef = useRef<AbortController | null>(null);
+  const ocrImageUrlRef = useRef<string | null>(null);
 
   const givens = useMemo(
     () => values.map((value) => value !== 0),
@@ -90,10 +92,37 @@ export default function SudokuApp() {
     () => () => {
       ocrRunRef.current += 1;
       ocrAbortRef.current?.abort();
-      if (ocrDialog?.imageUrl) URL.revokeObjectURL(ocrDialog.imageUrl);
+      if (ocrImageUrlRef.current) {
+        URL.revokeObjectURL(ocrImageUrlRef.current);
+        ocrImageUrlRef.current = null;
+      }
     },
-    [ocrDialog?.imageUrl],
+    [],
   );
+
+  useEffect(() => {
+    if (ocrDialog?.phase !== "processing") return;
+
+    const progressValue = ocrDialog.progress.value;
+    const timer = window.setTimeout(() => {
+      ocrRunRef.current += 1;
+      ocrAbortRef.current?.abort();
+      ocrAbortRef.current = null;
+      setOcrDialog((current) =>
+        current?.phase === "processing" &&
+        current.progress.value === progressValue
+          ? {
+              ...current,
+              phase: "error",
+              error:
+                "识别进度长时间没有推进。请重新选择图片，或稍后再试。",
+            }
+          : current,
+      );
+    }, OCR_PROGRESS_STALL_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [ocrDialog?.phase, ocrDialog?.progress.value]);
 
   const invalidateResult = useCallback(() => {
     setResult(null);
@@ -268,10 +297,11 @@ export default function SudokuApp() {
     ocrRunRef.current += 1;
     ocrAbortRef.current?.abort();
     ocrAbortRef.current = null;
-    setOcrDialog((current) => {
-      if (current?.imageUrl) URL.revokeObjectURL(current.imageUrl);
-      return null;
-    });
+    if (ocrImageUrlRef.current) {
+      URL.revokeObjectURL(ocrImageUrlRef.current);
+      ocrImageUrlRef.current = null;
+    }
+    setOcrDialog(null);
   }, []);
 
   const handleOcrFile = async (
@@ -286,16 +316,17 @@ export default function SudokuApp() {
     const abortController = new AbortController();
     ocrAbortRef.current = abortController;
     const imageUrl = URL.createObjectURL(file);
-    setOcrDialog((current) => {
-      if (current?.imageUrl) URL.revokeObjectURL(current.imageUrl);
-      return {
-        phase: "processing",
-        imageUrl,
-        fileName: file.name,
-        progress: INITIAL_OCR_PROGRESS,
-        result: null,
-        error: "",
-      };
+    if (ocrImageUrlRef.current) {
+      URL.revokeObjectURL(ocrImageUrlRef.current);
+    }
+    ocrImageUrlRef.current = imageUrl;
+    setOcrDialog({
+      phase: "processing",
+      imageUrl,
+      fileName: file.name,
+      progress: INITIAL_OCR_PROGRESS,
+      result: null,
+      error: "",
     });
 
     try {

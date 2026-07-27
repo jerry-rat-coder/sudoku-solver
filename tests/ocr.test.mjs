@@ -6,6 +6,7 @@ import {
   decodeSudokuImage,
   locateSudokuGrid,
   otsuThreshold,
+  recognizeSudokuImage,
   rotateSquare,
 } from "../lib/ocr/sudokuOcr.ts";
 
@@ -121,6 +122,23 @@ test("OCR review catches row, column, and box conflicts", () => {
   values[9] = 5;
   const conflicts = conflictingCells(values);
   assert.deepEqual([...conflicts].sort((a, b) => a - b), [0, 1, 9]);
+});
+
+test("recognizeSudokuImage rejects immediately when signal is already aborted", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    () =>
+      recognizeSudokuImage(
+        { name: "board.png", type: "image/png", size: 128 },
+        undefined,
+        controller.signal,
+      ),
+    (error) =>
+      error instanceof DOMException &&
+      error.name === "AbortError" &&
+      error.message === "识别已取消。",
+  );
 });
 
 test("image decoding does not depend on createImageBitmap", async () => {
