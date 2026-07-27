@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   describeUnit,
   toCellName,
@@ -10,8 +10,13 @@ import {
 interface StepPanelProps {
   result: SolveResult | null;
   stepIndex: number;
-  onStepChange: (step: number) => void;
   onFocusCell: (cell: number) => void;
+}
+
+interface StepPlayerProps {
+  result: SolveResult | null;
+  stepIndex: number;
+  onStepChange: (step: number) => void;
 }
 
 function CellToken({
@@ -252,12 +257,10 @@ function CandidateChanges({
 export function StepPanel({
   result,
   stepIndex,
-  onStepChange,
   onFocusCell,
 }: StepPanelProps) {
   const total = result?.steps.length ?? 0;
   const step = result && stepIndex > 0 ? result.steps[stepIndex - 1] : null;
-  const sliderMax = Math.max(total, 1);
   const atFinalStep = Boolean(result && stepIndex === total);
 
   return (
@@ -353,70 +356,83 @@ export function StepPanel({
         )}
       </div>
 
-      <div className="player">
-        <div className="player-buttons">
-          <button
-            type="button"
-            onClick={() => onStepChange(total > 0 ? 1 : 0)}
-            disabled={!result || total === 0 || stepIndex === 1}
-            aria-label="跳到第一步"
-          >
-            <span aria-hidden="true">|◀</span>
-            <small>第一步</small>
-          </button>
-          <button
-            type="button"
-            onClick={() => onStepChange(Math.max(0, stepIndex - 1))}
-            disabled={!result || stepIndex === 0}
-            aria-label="上一步"
-          >
-            <span aria-hidden="true">‹</span>
-            <small>上一步</small>
-          </button>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => onStepChange(Math.min(total, stepIndex + 1))}
-            disabled={!result || stepIndex >= total}
-            aria-label="下一步"
-          >
-            <span aria-hidden="true">›</span>
-            <small>下一步</small>
-          </button>
-          <button
-            type="button"
-            onClick={() => onStepChange(total)}
-            disabled={!result || total === 0 || stepIndex === total}
-            aria-label="跳到最后一步"
-          >
-            <span aria-hidden="true">▶|</span>
-            <small>最后一步</small>
-          </button>
-        </div>
-
-        <input
-          className="step-range"
-          type="range"
-          min={0}
-          max={sliderMax}
-          value={result ? stepIndex : 0}
-          disabled={!result || total === 0}
-          onChange={(event) => onStepChange(Number(event.target.value))}
-          style={{
-            "--progress": result ? `${(stepIndex / sliderMax) * 100}%` : "0%",
-          } as React.CSSProperties}
-          aria-label="步骤进度"
-        />
-        <div className="range-label">
-          <span>{stepIndex === 0 ? "初始盘面" : `第 ${stepIndex} 步`}</span>
-          <span>{total} 步</span>
-        </div>
-        <p className="shortcut-hint">
-          <kbd>←</kbd>
-          <kbd>→</kbd> 切换步骤 · <kbd>Home</kbd>
-          <kbd>End</kbd> 跳转
-        </p>
-      </div>
     </aside>
+  );
+}
+
+export function StepPlayer({
+  result,
+  stepIndex,
+  onStepChange,
+}: StepPlayerProps) {
+  const total = result?.steps.length ?? 0;
+  const sliderMax = Math.max(total, 1);
+
+  return (
+    <div className="player replay-player" aria-label="步骤播放控制">
+      <input
+        className="step-range"
+        type="range"
+        min={0}
+        max={sliderMax}
+        value={result ? stepIndex : 0}
+        disabled={!result || total === 0}
+        onChange={(event) => onStepChange(Number(event.target.value))}
+        style={{
+          "--progress": result ? `${(stepIndex / sliderMax) * 100}%` : "0%",
+        } as CSSProperties}
+        aria-label="步骤进度"
+      />
+      <div className="range-label">
+        <span>{stepIndex === 0 ? "初始盘面" : `第 ${stepIndex} 步`}</span>
+        <span>{total} 步</span>
+      </div>
+
+      <div className="player-buttons">
+        <button
+          type="button"
+          onClick={() => onStepChange(total > 0 ? 1 : 0)}
+          disabled={!result || total === 0 || stepIndex === 1}
+          aria-label="跳到第一步"
+        >
+          <span aria-hidden="true">|◀</span>
+          <small>第一步</small>
+        </button>
+        <button
+          type="button"
+          onClick={() => onStepChange(Math.max(0, stepIndex - 1))}
+          disabled={!result || stepIndex === 0}
+          aria-label="上一步"
+        >
+          <span aria-hidden="true">‹</span>
+          <small>上一步</small>
+        </button>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => onStepChange(Math.min(total, stepIndex + 1))}
+          disabled={!result || stepIndex >= total}
+          aria-label="下一步"
+        >
+          <span aria-hidden="true">›</span>
+          <small>下一步</small>
+        </button>
+        <button
+          type="button"
+          onClick={() => onStepChange(total)}
+          disabled={!result || total === 0 || stepIndex === total}
+          aria-label="跳到最后一步"
+        >
+          <span aria-hidden="true">▶|</span>
+          <small>最后一步</small>
+        </button>
+      </div>
+
+      <p className="shortcut-hint">
+        <kbd>←</kbd>
+        <kbd>→</kbd> 切换步骤 · <kbd>Home</kbd>
+        <kbd>End</kbd> 跳转
+      </p>
+    </div>
   );
 }

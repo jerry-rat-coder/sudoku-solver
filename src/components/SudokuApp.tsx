@@ -10,9 +10,16 @@ import {
   type OcrProgress,
   type SudokuOcrResult,
 } from "@/lib/ocr/sudokuOcr";
+import {
+  appRouteFromPath,
+  type AppRoute,
+} from "@/lib/app/routes";
 import { OcrImportDialog } from "@/src/components/OcrImportDialog";
 import { SudokuBoard } from "@/src/components/SudokuBoard";
-import { StepPanel } from "@/src/components/StepPanel";
+import {
+  StepPanel,
+  StepPlayer,
+} from "@/src/components/StepPanel";
 import {
   DIGITS,
   conflictCellsForValues,
@@ -50,7 +57,37 @@ function firstEmpty(values: readonly number[]) {
   return index === -1 ? 0 : index;
 }
 
+function BoardFooter({ selectedCell }: { selectedCell: number | null }) {
+  return (
+    <div className="board-footer">
+      <div className="legend">
+        <span>
+          <i className="legend-given" /> 题目
+        </span>
+        <span>
+          <i className="legend-related" /> 相关单位
+        </span>
+        <span>
+          <i className="legend-result" /> 本步结论
+        </span>
+        <span>
+          <i className="legend-remove" /> 候选排除
+        </span>
+      </div>
+      <p>
+        当前单元格{" "}
+        <strong>
+          {selectedCell === null ? "未选择" : toCellName(selectedCell)}
+        </strong>
+      </p>
+    </div>
+  );
+}
+
 export default function SudokuApp() {
+  const [route, setRoute] = useState<AppRoute>(() =>
+    appRouteFromPath(window.location.pathname),
+  );
   const [values, setValues] = useState<number[]>(() => [...EMPTY_VALUES]);
   const [notes, setNotes] = useState<number[]>([...EMPTY_NOTES]);
   const [selectedCell, setSelectedCell] = useState<number | null>(0);
@@ -79,6 +116,40 @@ export default function SudokuApp() {
   const currentStep =
     result && stepIndex > 0 ? result.steps[stepIndex - 1] : undefined;
   const filledCount = values.filter(Boolean).length;
+
+  const navigateTo = useCallback(
+    (nextRoute: AppRoute, replace = false) => {
+      const nextPath = nextRoute === "replay" ? "/replay" : "/";
+      if (window.location.pathname !== nextPath) {
+        window.history[replace ? "replaceState" : "pushState"](
+          null,
+          "",
+          nextPath,
+        );
+      }
+      setRoute(nextRoute);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handlePopState = () =>
+      setRoute(appRouteFromPath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (route === "replay" && !result) {
+      navigateTo("entry", true);
+      return;
+    }
+    if (route === "entry" && result) {
+      setResult(null);
+      setStepIndex(0);
+      setSelectedCell(firstEmpty(values));
+    }
+  }, [navigateTo, result, route, values]);
 
   useEffect(
     () => () => {
@@ -275,12 +346,14 @@ export default function SudokuApp() {
     if (nextResult.steps[0]?.focusCells[0] !== undefined) {
       setSelectedCell(nextResult.steps[0].focusCells[0]);
     }
+    navigateTo("replay");
   };
 
   const returnToEdit = () => {
     setResult(null);
     setStepIndex(0);
     setSelectedCell(firstEmpty(values));
+    navigateTo("entry");
   };
 
   const chooseOcrImage = () => imageInputRef.current?.click();
@@ -383,14 +456,26 @@ export default function SudokuApp() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            9
-          </span>
-          <div>
-            <h1>数独推演器</h1>
-            <p>Human Logic Solver</p>
+      <header className={`topbar ${route === "replay" ? "replay-topbar" : ""}`}>
+        <div className="brand-group">
+          {route === "replay" ? (
+            <button
+              type="button"
+              className="route-back"
+              onClick={returnToEdit}
+              aria-label="返回录题"
+            >
+              ←
+            </button>
+          ) : null}
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              9
+            </span>
+            <div>
+              <h1>数独推演器</h1>
+              <p>Human Logic Solver</p>
+            </div>
           </div>
         </div>
         <div className="topbar-context" aria-live="polite">
@@ -400,89 +485,90 @@ export default function SudokuApp() {
           </strong>
         </div>
         <div className="header-actions">
-          <button type="button" className="secondary" onClick={loadExample}>
-            示例题目
-            <small>
-              {exampleIndex < 0
-                ? `共 ${SUDOKU_EXAMPLES.length} 题`
-                : `${exampleIndex + 1}/${SUDOKU_EXAMPLES.length}`}
-            </small>
-          </button>
-          <button type="button" className="ghost" onClick={clearPuzzle}>
-            清空
-          </button>
-          <button type="button" className="solve-button" onClick={startSolving}>
-            开始推演
-          </button>
+          {route === "entry" ? (
+            <>
+              <button type="button" className="secondary" onClick={loadExample}>
+                示例题目
+                <small>
+                  {exampleIndex < 0
+                    ? `共 ${SUDOKU_EXAMPLES.length} 题`
+                    : `${exampleIndex + 1}/${SUDOKU_EXAMPLES.length}`}
+                </small>
+              </button>
+              <button type="button" className="ghost" onClick={clearPuzzle}>
+                清空
+              </button>
+              <button
+                type="button"
+                className="solve-button"
+                onClick={startSolving}
+              >
+                开始推演
+              </button>
+            </>
+          ) : null}
         </div>
       </header>
 
-      <div className="workspace">
-        <section className="board-panel" aria-label="题目录入区">
-          <div className="image-import-bar">
-            <div>
-              <span className="image-import-mark" aria-hidden="true">
-                OCR
-              </span>
-              <p>
-                <strong>从数独图片录题</strong>
-                <span>自动定位、矫正并识别，填入前可逐格校对</span>
-              </p>
-            </div>
-            <button type="button" onClick={chooseOcrImage}>
-              上传图片
-            </button>
-            <input
-              ref={imageInputRef}
-              className="visually-hidden"
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/*"
-              onChange={handleOcrFile}
-              aria-label="选择数独图片"
-            />
-          </div>
-
-          <div className="input-toolbar">
-            <div className="mode-control" aria-label="输入模式">
-              <span className="toolbar-label">输入模式</span>
-              <div className="segmented">
-                <button
-                  type="button"
-                  className={inputMode === "value" ? "active" : ""}
-                  onClick={() => setInputMode("value")}
-                  disabled={Boolean(result)}
-                >
-                  填数字
-                </button>
-                <button
-                  type="button"
-                  className={inputMode === "candidate" ? "active" : ""}
-                  onClick={() => setInputMode("candidate")}
-                  disabled={Boolean(result)}
-                >
-                  候选数
-                </button>
+      {route === "entry" ? (
+        <div className="workspace entry-workspace">
+          <section className="board-panel" aria-label="题目录入区">
+            <div className="image-import-bar">
+              <div>
+                <span className="image-import-mark" aria-hidden="true">
+                  OCR
+                </span>
+                <p>
+                  <strong>从数独图片录题</strong>
+                  <span>自动定位、矫正并识别，填入前可逐格校对</span>
+                </p>
               </div>
-            </div>
-
-            <div className="number-pad" aria-label="数字键盘">
-              {DIGITS.map((digit) => (
-                <button
-                  type="button"
-                  key={digit}
-                  onClick={() => inputDigit(digit)}
-                  disabled={Boolean(result)}
-                >
-                  {digit}
-                </button>
-              ))}
-            </div>
-
-            {result ? (
-              <button type="button" className="edit-button" onClick={returnToEdit}>
-                修改题目
+              <button type="button" onClick={chooseOcrImage}>
+                上传图片
               </button>
-            ) : (
+              <input
+                ref={imageInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/*"
+                onChange={handleOcrFile}
+                aria-label="选择数独图片"
+              />
+            </div>
+
+            <div className="input-toolbar">
+              <div className="mode-control" aria-label="输入模式">
+                <span className="toolbar-label">输入模式</span>
+                <div className="segmented">
+                  <button
+                    type="button"
+                    className={inputMode === "value" ? "active" : ""}
+                    onClick={() => setInputMode("value")}
+                  >
+                    填数字
+                  </button>
+                  <button
+                    type="button"
+                    className={inputMode === "candidate" ? "active" : ""}
+                    onClick={() => setInputMode("candidate")}
+                  >
+                    候选数
+                  </button>
+                </div>
+              </div>
+
+              <div className="number-pad" aria-label="数字键盘">
+                {DIGITS.map((digit) => (
+                  <button
+                    type="button"
+                    key={digit}
+                    onClick={() => inputDigit(digit)}
+                  >
+                    {digit}
+                  </button>
+                ))}
+              </div>
+
               <button
                 type="button"
                 className="erase-button"
@@ -490,50 +576,49 @@ export default function SudokuApp() {
               >
                 擦除
               </button>
-            )}
-          </div>
-
-          <SudokuBoard
-            values={displayValues}
-            candidates={displayCandidates}
-            givens={givens}
-            selectedCell={selectedCell}
-            conflicts={conflicts}
-            currentStep={currentStep}
-            onSelect={setSelectedCell}
-          />
-
-          <div className="board-footer">
-            <div className="legend">
-              <span>
-                <i className="legend-given" /> 题目
-              </span>
-              <span>
-                <i className="legend-related" /> 相关单位
-              </span>
-              <span>
-                <i className="legend-result" /> 本步结论
-              </span>
-              <span>
-                <i className="legend-remove" /> 候选排除
-              </span>
             </div>
-            <p>
-              当前单元格{" "}
-              <strong>
-                {selectedCell === null ? "未选择" : toCellName(selectedCell)}
-              </strong>
-            </p>
-          </div>
-        </section>
 
-        <StepPanel
-          result={result}
-          stepIndex={stepIndex}
-          onStepChange={changeStep}
-          onFocusCell={setSelectedCell}
-        />
-      </div>
+            <SudokuBoard
+              values={values}
+              candidates={notes}
+              givens={givens}
+              selectedCell={selectedCell}
+              conflicts={conflicts}
+              onSelect={setSelectedCell}
+            />
+            <BoardFooter selectedCell={selectedCell} />
+          </section>
+        </div>
+      ) : (
+        <div className="workspace replay-workspace">
+          <section
+            className="board-panel replay-board-panel"
+            aria-label="步骤回放盘面"
+          >
+            <SudokuBoard
+              values={displayValues}
+              candidates={displayCandidates}
+              givens={givens}
+              selectedCell={selectedCell}
+              conflicts={conflicts}
+              currentStep={currentStep}
+              onSelect={setSelectedCell}
+            />
+            <StepPlayer
+              result={result}
+              stepIndex={stepIndex}
+              onStepChange={changeStep}
+            />
+            <BoardFooter selectedCell={selectedCell} />
+          </section>
+
+          <StepPanel
+            result={result}
+            stepIndex={stepIndex}
+            onFocusCell={setSelectedCell}
+          />
+        </div>
+      )}
 
       <footer className="app-footer">
         <p>
