@@ -23,3 +23,19 @@ test("entry and replay URLs resolve to separate application pages", () => {
   assert.equal(appRouteFromPath("/replay"), "replay");
   assert.equal(appRouteFromPath("/replay/step/12"), "replay");
 });
+
+test("mobile OCR review keeps actions visible beside a scrollable editor", async () => {
+  const css = await readFile(
+    new URL("../src/styles.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /\.ocr-dialog\s*\{[^}]*height:\s*100dvh/s);
+  assert.match(
+    css,
+    /\.ocr-review\s*\{[^}]*flex:\s*1[^}]*overflow-y:\s*auto/s,
+  );
+  assert.match(
+    css,
+    /\.ocr-dialog-footer\s*\{[^}]*flex:\s*0 0 auto/s,
+  );
+});
