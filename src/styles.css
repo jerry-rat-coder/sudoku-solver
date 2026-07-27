@@ -468,6 +468,7 @@ input:focus-visible {
   z-index: 2;
   display: grid;
   grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(9, minmax(0, 1fr));
   width: 100%;
   aspect-ratio: 1;
 }
@@ -1468,6 +1469,7 @@ kbd {
 .ocr-mini-grid {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(9, minmax(0, 1fr));
   aspect-ratio: 1;
   overflow: hidden;
   border: 2px solid var(--ink);

@@ -39,3 +39,18 @@ test("mobile OCR review keeps actions visible beside a scrollable editor", async
     /\.ocr-dialog-footer\s*\{[^}]*flex:\s*0 0 auto/s,
   );
 });
+
+test("Sudoku boards keep all nine rows at equal height", async () => {
+  const css = await readFile(
+    new URL("../src/styles.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /\.sudoku-board\s*\{[^}]*grid-template-rows:\s*repeat\(9,\s*minmax\(0,\s*1fr\)\)/s,
+  );
+  assert.match(
+    css,
+    /\.ocr-mini-grid\s*\{[^}]*grid-template-rows:\s*repeat\(9,\s*minmax\(0,\s*1fr\)\)/s,
+  );
+});
