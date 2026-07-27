@@ -279,9 +279,7 @@ export function StepPanel({
           <div className="empty-explanation">
             <span className="empty-mark">01</span>
             <h3>从当前最简单的一步开始</h3>
-            <p>
-              填写题目或载入示例后点击“开始推演”。每次盘面变化后都会从最低权重技巧重新扫描。
-            </p>
+            <p>填写题目或载入示例后点击“开始推演”。</p>
             <div className="technique-list" aria-label="当前技巧库">
               <span>唯一数</span>
               <span>区块摒除</span>

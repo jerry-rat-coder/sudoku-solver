@@ -51,22 +51,14 @@ function firstEmpty(values: readonly number[]) {
 }
 
 export default function SudokuApp() {
-  const initialValues = useMemo(
-    () => parsePuzzle(SUDOKU_EXAMPLES[0].puzzle),
-    [],
-  );
-  const [values, setValues] = useState<number[]>(initialValues);
+  const [values, setValues] = useState<number[]>(() => [...EMPTY_VALUES]);
   const [notes, setNotes] = useState<number[]>([...EMPTY_NOTES]);
-  const [selectedCell, setSelectedCell] = useState<number | null>(
-    firstEmpty(initialValues),
-  );
+  const [selectedCell, setSelectedCell] = useState<number | null>(0);
   const [inputMode, setInputMode] = useState<InputMode>("value");
   const [result, setResult] = useState<SolveResult | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
-  const [exampleIndex, setExampleIndex] = useState(0);
-  const [sourceLabel, setSourceLabel] = useState(
-    `${SUDOKU_EXAMPLES[0].name} · ${SUDOKU_EXAMPLES[0].difficulty}`,
-  );
+  const [exampleIndex, setExampleIndex] = useState(-1);
+  const [sourceLabel, setSourceLabel] = useState("空白题目");
   const [ocrDialog, setOcrDialog] = useState<OcrDialogState | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const ocrRunRef = useRef(0);
@@ -411,7 +403,9 @@ export default function SudokuApp() {
           <button type="button" className="secondary" onClick={loadExample}>
             示例题目
             <small>
-              {exampleIndex + 1}/{SUDOKU_EXAMPLES.length}
+              {exampleIndex < 0
+                ? `共 ${SUDOKU_EXAMPLES.length} 题`
+                : `${exampleIndex + 1}/${SUDOKU_EXAMPLES.length}`}
             </small>
           </button>
           <button type="button" className="ghost" onClick={clearPuzzle}>
