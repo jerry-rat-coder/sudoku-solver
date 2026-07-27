@@ -1,4 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  recognizeSudokuImage,
+  type OcrProgress,
+  type SudokuOcrResult,
+} from "@/lib/ocr/sudokuOcr";
+import { OcrImportDialog } from "@/src/components/OcrImportDialog";
 import { SudokuBoard } from "@/src/components/SudokuBoard";
 import { StepPanel } from "@/src/components/StepPanel";
 import {
@@ -15,8 +27,22 @@ import {
 
 type InputMode = "value" | "candidate";
 
+interface OcrDialogState {
+  phase: "processing" | "review" | "error";
+  imageUrl: string;
+  fileName: string;
+  progress: OcrProgress;
+  result: SudokuOcrResult | null;
+  error: string;
+}
+
 const EMPTY_VALUES = Array(81).fill(0) as number[];
 const EMPTY_NOTES = Array(81).fill(0) as number[];
+const INITIAL_OCR_PROGRESS: OcrProgress = {
+  stage: "decode",
+  value: 0,
+  message: "准备读取图片",
+};
 
 function firstEmpty(values: readonly number[]) {
   const index = values.findIndex((value) => value === 0);
@@ -40,6 +66,10 @@ export default function SudokuApp() {
   const [sourceLabel, setSourceLabel] = useState(
     `${SUDOKU_EXAMPLES[0].name} · ${SUDOKU_EXAMPLES[0].difficulty}`,
   );
+  const [ocrDialog, setOcrDialog] = useState<OcrDialogState | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const ocrRunRef = useRef(0);
+  const ocrAbortRef = useRef<AbortController | null>(null);
 
   const givens = useMemo(
     () => values.map((value) => value !== 0),
@@ -55,6 +85,15 @@ export default function SudokuApp() {
   const currentStep =
     result && stepIndex > 0 ? result.steps[stepIndex - 1] : undefined;
   const filledCount = values.filter(Boolean).length;
+
+  useEffect(
+    () => () => {
+      ocrRunRef.current += 1;
+      ocrAbortRef.current?.abort();
+      if (ocrDialog?.imageUrl) URL.revokeObjectURL(ocrDialog.imageUrl);
+    },
+    [ocrDialog?.imageUrl],
+  );
 
   const invalidateResult = useCallback(() => {
     setResult(null);
@@ -128,6 +167,7 @@ export default function SudokuApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (ocrDialog) return;
       const target = event.target as HTMLElement | null;
       if (
         target?.tagName === "INPUT" &&
@@ -176,6 +216,7 @@ export default function SudokuApp() {
     eraseSelected,
     inputDigit,
     moveSelection,
+    ocrDialog,
     result,
     stepIndex,
   ]);
@@ -221,6 +262,102 @@ export default function SudokuApp() {
     setSelectedCell(firstEmpty(values));
   };
 
+  const chooseOcrImage = () => imageInputRef.current?.click();
+
+  const closeOcrDialog = useCallback(() => {
+    ocrRunRef.current += 1;
+    ocrAbortRef.current?.abort();
+    ocrAbortRef.current = null;
+    setOcrDialog((current) => {
+      if (current?.imageUrl) URL.revokeObjectURL(current.imageUrl);
+      return null;
+    });
+  }, []);
+
+  const handleOcrFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const runId = ocrRunRef.current + 1;
+    ocrRunRef.current = runId;
+    ocrAbortRef.current?.abort();
+    const abortController = new AbortController();
+    ocrAbortRef.current = abortController;
+    const imageUrl = URL.createObjectURL(file);
+    setOcrDialog((current) => {
+      if (current?.imageUrl) URL.revokeObjectURL(current.imageUrl);
+      return {
+        phase: "processing",
+        imageUrl,
+        fileName: file.name,
+        progress: INITIAL_OCR_PROGRESS,
+        result: null,
+        error: "",
+      };
+    });
+
+    try {
+      const ocrResult = await recognizeSudokuImage(
+        file,
+        (progress) => {
+          if (ocrRunRef.current !== runId) return;
+          setOcrDialog((current) =>
+            current ? { ...current, progress } : current,
+          );
+        },
+        abortController.signal,
+      );
+      if (ocrRunRef.current !== runId) return;
+      setOcrDialog((current) =>
+        current
+          ? {
+              ...current,
+              phase: "review",
+              progress: {
+                stage: "validate",
+                value: 1,
+                message: "识别完成，请校对结果",
+              },
+              result: ocrResult,
+              error: "",
+            }
+          : current,
+      );
+    } catch (error) {
+      if (ocrRunRef.current !== runId) return;
+      setOcrDialog((current) =>
+        current
+          ? {
+              ...current,
+              phase: "error",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "图片识别发生未知错误。",
+            }
+          : current,
+      );
+    }
+  };
+
+  const applyOcrValues = (recognizedValues: readonly number[]) => {
+    const nextValues = Array.from({ length: 81 }, (_, cell) => {
+      const value = Number(recognizedValues[cell] ?? 0);
+      return Number.isInteger(value) && value >= 1 && value <= 9 ? value : 0;
+    });
+    setValues(nextValues);
+    setNotes([...EMPTY_NOTES]);
+    setSelectedCell(firstEmpty(nextValues));
+    setResult(null);
+    setStepIndex(0);
+    setSourceLabel(
+      `图片识别 · ${nextValues.filter(Boolean).length} 个已知数`,
+    );
+    closeOcrDialog();
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -257,6 +394,29 @@ export default function SudokuApp() {
 
       <div className="workspace">
         <section className="board-panel" aria-label="题目录入区">
+          <div className="image-import-bar">
+            <div>
+              <span className="image-import-mark" aria-hidden="true">
+                OCR
+              </span>
+              <p>
+                <strong>从数独图片录题</strong>
+                <span>自动定位、矫正并识别，填入前可逐格校对</span>
+              </p>
+            </div>
+            <button type="button" onClick={chooseOcrImage}>
+              上传图片
+            </button>
+            <input
+              ref={imageInputRef}
+              className="visually-hidden"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/*"
+              onChange={handleOcrFile}
+              aria-label="选择数独图片"
+            />
+          </div>
+
           <div className="input-toolbar">
             <div className="mode-control" aria-label="输入模式">
               <span className="toolbar-label">输入模式</span>
@@ -352,10 +512,24 @@ export default function SudokuApp() {
 
       <footer className="app-footer">
         <p>
-          v0.3 · 技巧库：基础、交叉、数组、鱼形、翼形、AIC、西尾链与强制网
+          v0.4 · 图片 OCR 录题 · AIC、西尾链与强制网
         </p>
         <p>每次变化后从最简单技巧重扫；高阶反证保留可追溯的因果节点。</p>
       </footer>
+
+      {ocrDialog ? (
+        <OcrImportDialog
+          phase={ocrDialog.phase}
+          imageUrl={ocrDialog.imageUrl}
+          fileName={ocrDialog.fileName}
+          progress={ocrDialog.progress}
+          result={ocrDialog.result}
+          error={ocrDialog.error}
+          onChooseAnother={chooseOcrImage}
+          onCancel={closeOcrDialog}
+          onApply={applyOcrValues}
+        />
+      ) : null}
     </main>
   );
 }
