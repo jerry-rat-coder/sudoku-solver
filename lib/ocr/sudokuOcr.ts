@@ -62,6 +62,7 @@ const GRID_SIZE = 900;
 const TEMPLATE_SIZE = 28;
 const MAX_SOURCE_DIMENSION = 1400;
 const LOW_CONFIDENCE = 0.68;
+const IMAGE_DECODE_TIMEOUT_MS = 20_000;
 let cachedTemplates: DigitTemplate[] | null = null;
 
 const clamp = (value: number, min: number, max: number) =>
@@ -895,64 +896,70 @@ function gridPreviewUrl(grayscale: Uint8ClampedArray) {
   return canvas.toDataURL("image/jpeg", 0.82);
 }
 
-async function decodeImage(file: File) {
-  let source: CanvasImageSource | null = null;
-  let sourceWidth = 0;
-  let sourceHeight = 0;
-  let cleanup = () => {};
-  if (typeof createImageBitmap === "function") {
-    try {
-      const bitmap = await createImageBitmap(file);
-      source = bitmap;
-      sourceWidth = bitmap.width;
-      sourceHeight = bitmap.height;
-      cleanup = () => bitmap.close();
-    } catch {
-      // Some Safari versions expose createImageBitmap but reject valid uploads.
-      // Fall through to the broadly supported HTMLImageElement decoder.
+export async function decodeSudokuImage(file: File, signal?: AbortSignal) {
+  if (signal?.aborted) throw new DOMException("识别已取消。", "AbortError");
+  const imageUrl = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: Error | DOMException) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        signal?.removeEventListener("abort", onAbort);
+        image.onload = null;
+        image.onerror = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const onAbort = () =>
+        finish(new DOMException("识别已取消。", "AbortError"));
+      const timeout = window.setTimeout(
+        () =>
+          finish(
+            new Error(
+              "读取图片超时。请重新选择图片，或先将照片转存为 PNG/JPEG 后再试。",
+            ),
+          ),
+        IMAGE_DECODE_TIMEOUT_MS,
+      );
+      image.onload = () => finish();
+      image.onerror = () => finish(new Error("浏览器无法解码这张图片。"));
+      signal?.addEventListener("abort", onAbort, { once: true });
+      image.src = imageUrl;
+    });
+
+    if (!image.naturalWidth || !image.naturalHeight) {
+      throw new Error("图片尺寸无效，请重新选择图片。");
     }
-  }
-  if (!source) {
-    const imageUrl = URL.createObjectURL(file);
-    const image = new Image();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error("浏览器无法解码这张图片。"));
-        image.src = imageUrl;
-      });
-    } catch (error) {
-      URL.revokeObjectURL(imageUrl);
-      throw error;
+    const scale = Math.min(
+      1,
+      MAX_SOURCE_DIMENSION /
+        Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      throw new Error("当前浏览器无法读取图片像素。");
     }
-    source = image;
-    sourceWidth = image.naturalWidth;
-    sourceHeight = image.naturalHeight;
-    cleanup = () => URL.revokeObjectURL(imageUrl);
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return {
+      width,
+      height,
+      grayscale: grayscaleFromImageData(
+        context.getImageData(0, 0, width, height),
+      ),
+    };
+  } finally {
+    URL.revokeObjectURL(imageUrl);
   }
-  const scale = Math.min(
-    1,
-    MAX_SOURCE_DIMENSION / Math.max(sourceWidth, sourceHeight),
-  );
-  const width = Math.max(1, Math.round(sourceWidth * scale));
-  const height = Math.max(1, Math.round(sourceHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (!context) {
-    cleanup();
-    throw new Error("当前浏览器无法读取图片像素。");
-  }
-  context.fillStyle = "#fff";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(source, 0, 0, width, height);
-  cleanup();
-  return {
-    width,
-    height,
-    grayscale: grayscaleFromImageData(context.getImageData(0, 0, width, height)),
-  };
 }
 
 export async function recognizeSudokuImage(
@@ -974,7 +981,7 @@ export async function recognizeSudokuImage(
 
   report(onProgress, "decode", 0.04, "正在读取图片");
   await nextFrame();
-  const source = await decodeImage(file);
+  const source = await decodeSudokuImage(file, signal);
   if (signal?.aborted) throw new DOMException("识别已取消。", "AbortError");
   report(onProgress, "locate", 0.16, "正在定位九宫格边界");
   await nextFrame();

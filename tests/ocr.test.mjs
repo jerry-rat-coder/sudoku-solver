@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   conflictingCells,
+  decodeSudokuImage,
   locateSudokuGrid,
   otsuThreshold,
   rotateSquare,
@@ -120,4 +121,83 @@ test("OCR review catches row, column, and box conflicts", () => {
   values[9] = 5;
   const conflicts = conflictingCells(values);
   assert.deepEqual([...conflicts].sort((a, b) => a - b), [0, 1, 9]);
+});
+
+test("image decoding does not depend on createImageBitmap", async () => {
+  const originals = {
+    createImageBitmap: globalThis.createImageBitmap,
+    document: globalThis.document,
+    Image: globalThis.Image,
+    window: globalThis.window,
+    createObjectURL: URL.createObjectURL,
+    revokeObjectURL: URL.revokeObjectURL,
+  };
+  let createImageBitmapCalls = 0;
+  let revokedUrl = "";
+
+  class MockImage {
+    naturalWidth = 2;
+    naturalHeight = 1;
+    onload = null;
+    onerror = null;
+
+    set src(_value) {
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  try {
+    globalThis.createImageBitmap = () => {
+      createImageBitmapCalls += 1;
+      return new Promise(() => {});
+    };
+    globalThis.Image = MockImage;
+    globalThis.window = globalThis;
+    URL.createObjectURL = () => "blob:test-image";
+    URL.revokeObjectURL = (url) => {
+      revokedUrl = url;
+    };
+    globalThis.document = {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          fillStyle: "",
+          fillRect: () => {},
+          drawImage: () => {},
+          getImageData: () => ({
+            width: 2,
+            height: 1,
+            data: new Uint8ClampedArray([
+              255, 255, 255, 255,
+              0, 0, 0, 255,
+            ]),
+          }),
+        }),
+      }),
+    };
+
+    const decoded = await Promise.race([
+      decodeSudokuImage({}),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error("HTML image decoding did not finish")),
+          250,
+        ),
+      ),
+    ]);
+
+    assert.equal(createImageBitmapCalls, 0);
+    assert.equal(decoded.width, 2);
+    assert.equal(decoded.height, 1);
+    assert.deepEqual([...decoded.grayscale], [255, 0]);
+    assert.equal(revokedUrl, "blob:test-image");
+  } finally {
+    globalThis.createImageBitmap = originals.createImageBitmap;
+    globalThis.document = originals.document;
+    globalThis.Image = originals.Image;
+    globalThis.window = originals.window;
+    URL.createObjectURL = originals.createObjectURL;
+    URL.revokeObjectURL = originals.revokeObjectURL;
+  }
 });
