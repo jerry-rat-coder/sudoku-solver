@@ -341,10 +341,11 @@ export default function SudokuApp() {
       candidatePolicy: hasCandidateRestrictions ? "respect" : "recompute",
       candidates: notes,
     });
+    const finalStep = nextResult.steps.at(-1);
     setResult(nextResult);
-    setStepIndex(nextResult.steps.length > 0 ? 1 : 0);
-    if (nextResult.steps[0]?.focusCells[0] !== undefined) {
-      setSelectedCell(nextResult.steps[0].focusCells[0]);
+    setStepIndex(nextResult.steps.length);
+    if (finalStep?.focusCells[0] !== undefined) {
+      setSelectedCell(finalStep.focusCells[0]);
     }
     navigateTo("replay");
   };
