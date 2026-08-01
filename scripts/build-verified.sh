@@ -14,15 +14,19 @@ if [[ ! -x "${vite}" ]]; then
 fi
 
 echo "Running bounded Vite build..."
+vite_args=(build)
+if [[ -n "${SITES_VITE_CONFIG:-}" ]]; then
+  vite_args+=(--config "${SITES_VITE_CONFIG}")
+fi
 if command -v timeout >/dev/null; then
   timeout \
     --signal=TERM \
     --kill-after="${SITES_BUILD_KILL_AFTER:-10s}" \
     "${SITES_BUILD_TIMEOUT:-3m}" \
-    "${vite}" build
+    "${vite}" "${vite_args[@]}"
 else
   echo "GNU timeout is unavailable; running the same deterministic build without a watchdog."
-  "${vite}" build
+  "${vite}" "${vite_args[@]}"
 fi
 
 "${script_dir}/validate-artifact.sh"

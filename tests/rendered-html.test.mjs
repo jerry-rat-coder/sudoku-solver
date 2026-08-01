@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { appRouteFromPath } from "../lib/app/routes.ts";
+import worker from "../worker/index.ts";
 
 const developmentPreviewMeta =
   /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
@@ -22,6 +23,28 @@ test("entry and replay URLs resolve to separate application pages", () => {
   assert.equal(appRouteFromPath("/anything-else"), "entry");
   assert.equal(appRouteFromPath("/replay"), "replay");
   assert.equal(appRouteFromPath("/replay/step/12"), "replay");
+});
+
+test("direct replay requests redirect home before static asset handling", async () => {
+  let assetRequests = 0;
+  const env = {
+    ASSETS: {
+      async fetch() {
+        assetRequests += 1;
+        return new Response("unexpected");
+      },
+    },
+  };
+
+  for (const path of ["/replay", "/replay/step/12"]) {
+    const response = await worker.fetch(
+      new Request(`https://sudoku.example${path}`),
+      env,
+    );
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "https://sudoku.example/");
+  }
+  assert.equal(assetRequests, 0);
 });
 
 test("mobile OCR review keeps actions visible beside a scrollable editor", async () => {
