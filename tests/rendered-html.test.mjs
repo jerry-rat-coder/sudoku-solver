@@ -77,3 +77,14 @@ test("Sudoku boards keep all nine rows at equal height", async () => {
     /\.ocr-mini-grid\s*\{[^}]*grid-template-rows:\s*repeat\(9,\s*minmax\(0,\s*1fr\)\)/s,
   );
 });
+
+test("Killer cage drawing disables touch scrolling while dragging", async () => {
+  const css = await readFile(
+    new URL("../src/styles.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /\.sudoku-board\.cage-drawing\s*\{[^}]*touch-action:\s*none/s,
+  );
+});

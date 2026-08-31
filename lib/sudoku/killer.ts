@@ -48,6 +48,29 @@ export function killerCageBounds(size: number): KillerCageBounds | null {
   };
 }
 
+export function areKillerCellsAdjacent(left: number, right: number) {
+  const rowDistance = Math.abs(Math.floor(left / 9) - Math.floor(right / 9));
+  const columnDistance = Math.abs((left % 9) - (right % 9));
+  return rowDistance + columnDistance === 1;
+}
+
+export function updateKillerSelection(
+  current: ReadonlySet<number>,
+  cell: number,
+  restartIfDisconnected: boolean,
+): Set<number> {
+  if (current.has(cell)) {
+    return current instanceof Set ? current : new Set(current);
+  }
+  if (
+    current.size === 0 ||
+    [...current].some((selected) => areKillerCellsAdjacent(selected, cell))
+  ) {
+    return new Set([...current, cell]);
+  }
+  return restartIfDisconnected ? new Set([cell]) : new Set(current);
+}
+
 export function isKillerCageContiguous(cells: readonly number[]) {
   const normalized = normalizedCells(cells);
   if (normalized.length === 0) return false;
@@ -57,14 +80,12 @@ export function isKillerCageContiguous(cells: readonly number[]) {
 
   while (pending.length) {
     const cell = pending.pop()!;
-    const row = Math.floor(cell / 9);
-    const column = cell % 9;
-    const neighbours = [
-      row > 0 ? cell - 9 : -1,
-      row < 8 ? cell + 9 : -1,
-      column > 0 ? cell - 1 : -1,
-      column < 8 ? cell + 1 : -1,
-    ];
+    const neighbours = [cell - 9, cell + 9, cell - 1, cell + 1].filter(
+      (neighbour) =>
+        neighbour >= 0 &&
+        neighbour < 81 &&
+        areKillerCellsAdjacent(cell, neighbour),
+    );
     for (const neighbour of neighbours) {
       if (cellSet.has(neighbour) && !seen.has(neighbour)) {
         seen.add(neighbour);

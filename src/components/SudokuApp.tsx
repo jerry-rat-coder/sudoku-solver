@@ -32,6 +32,7 @@ import {
   killerCageBounds,
   killerConflictCellsForValues,
   solveKillerSudoku,
+  updateKillerSelection,
   type KillerCage,
 } from "@/lib/sudoku/killer";
 import {
@@ -176,6 +177,12 @@ export default function SudokuApp() {
     return { canSave: true, bounds, message: `和数 ${sum} 合法；笼内数字将按标准规则不重复。`, sum };
   }, [cageSumInput, selectedCageCellList]);
 
+  useEffect(() => {
+    if (puzzleMode !== "killer" || inputMode !== "cage") return;
+    const bounds = killerCageBounds(selectedCageCells.size);
+    setCageSumInput(bounds ? String(bounds.min) : "");
+  }, [inputMode, puzzleMode, selectedCageCells]);
+
   const navigateTo = useCallback(
     (nextRoute: AppRoute, replace = false) => {
       const nextPath = nextRoute === "replay" ? "/replay" : "/";
@@ -286,22 +293,41 @@ export default function SudokuApp() {
     invalidateResult();
   }, [inputMode, invalidateResult, result, selectedCell]);
 
-  const handleBoardSelect = useCallback(
+  const handleCageSelectStart = useCallback(
     (cell: number) => {
-      if (puzzleMode === "killer" && inputMode === "cage" && !result) {
-        if (cages.some((cage) => cage.cells.includes(cell))) return;
-        setSelectedCell(cell);
-        setSelectedCageCells((current) => {
-          const next = new Set(current);
-          if (next.has(cell)) next.delete(cell);
-          else next.add(cell);
-          return next;
-        });
-        return;
-      }
+      if (cages.some((cage) => cage.cells.includes(cell))) return;
       setSelectedCell(cell);
+      setSelectedCageCells((current) => {
+        const next = updateKillerSelection(current, cell, true);
+        return next.size <= 9 ? next : current;
+      });
     },
-    [cages, inputMode, puzzleMode, result],
+    [cages],
+  );
+
+  const handleCageSelectExtend = useCallback(
+    (cell: number) => {
+      if (cages.some((cage) => cage.cells.includes(cell))) return;
+      setSelectedCell(cell);
+      setSelectedCageCells((current) => {
+        const next = updateKillerSelection(current, cell, false);
+        return next.size <= 9 ? next : current;
+      });
+    },
+    [cages],
+  );
+
+  const changeInputMode = useCallback(
+    (nextMode: InputMode) => {
+      if (nextMode === inputMode) return;
+      if (inputMode === "cage" || nextMode === "cage") {
+        setSelectedCageCells(new Set());
+        setCageSumInput("");
+        setSelectedCell(null);
+      }
+      setInputMode(nextMode);
+    },
+    [inputMode],
   );
 
   const moveSelection = useCallback((direction: string) => {
@@ -436,6 +462,7 @@ export default function SudokuApp() {
     setInputMode(nextMode === "killer" ? "cage" : "value");
     setSelectedCageCells(new Set());
     setCageSumInput("");
+    setSelectedCell(nextMode === "killer" ? null : firstEmpty(values));
     setExampleIndex(-1);
     setResult(null);
     setStepIndex(0);
@@ -689,14 +716,14 @@ export default function SudokuApp() {
                   <button
                     type="button"
                     className={inputMode === "value" ? "active" : ""}
-                    onClick={() => setInputMode("value")}
+                    onClick={() => changeInputMode("value")}
                   >
                     填数字
                   </button>
                   <button
                     type="button"
                     className={inputMode === "candidate" ? "active" : ""}
-                    onClick={() => setInputMode("candidate")}
+                    onClick={() => changeInputMode("candidate")}
                   >
                     候选数
                   </button>
@@ -704,7 +731,7 @@ export default function SudokuApp() {
                     <button
                       type="button"
                       className={inputMode === "cage" ? "active" : ""}
-                      onClick={() => setInputMode("cage")}
+                      onClick={() => changeInputMode("cage")}
                     >
                       画笼子
                     </button>
@@ -735,7 +762,7 @@ export default function SudokuApp() {
               </button>
             </div>
 
-            {puzzleMode === "killer" ? (
+            {puzzleMode === "killer" && inputMode === "cage" ? (
               <>
                 <div className="cage-editor" aria-label="杀手笼设定">
                   <div className="cage-editor-copy">
@@ -788,7 +815,10 @@ export default function SudokuApp() {
               conflicts={conflicts}
               cages={puzzleMode === "killer" ? cages : []}
               cageSelection={puzzleMode === "killer" ? selectedCageCells : undefined}
-              onSelect={handleBoardSelect}
+              cageSelectionMode={puzzleMode === "killer" && inputMode === "cage"}
+              onCageSelectStart={handleCageSelectStart}
+              onCageSelectExtend={handleCageSelectExtend}
+              onSelect={setSelectedCell}
             />
             <BoardFooter selectedCell={selectedCell} puzzleMode={puzzleMode} cageCount={cages.length} />
           </section>
@@ -807,7 +837,7 @@ export default function SudokuApp() {
               conflicts={conflicts}
               currentStep={currentStep}
               cages={puzzleMode === "killer" ? cages : []}
-              onSelect={handleBoardSelect}
+              onSelect={setSelectedCell}
             />
             <StepPlayer
               result={result}

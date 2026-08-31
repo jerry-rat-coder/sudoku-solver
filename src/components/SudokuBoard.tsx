@@ -1,4 +1,8 @@
 import {
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
   DIGITS,
   digitInMask,
   type CandidateRef,
@@ -15,7 +19,15 @@ interface SudokuBoardProps {
   currentStep?: SolveStep;
   cages?: readonly KillerCage[];
   cageSelection?: ReadonlySet<number>;
+  cageSelectionMode?: boolean;
+  onCageSelectStart?: (cell: number) => void;
+  onCageSelectExtend?: (cell: number) => void;
   onSelect: (cell: number) => void;
+}
+
+interface PointerPoint {
+  x: number;
+  y: number;
 }
 
 function isSelectionPeer(cell: number, selectedCell: number | null) {
@@ -87,8 +99,14 @@ export function SudokuBoard({
   currentStep,
   cages = [],
   cageSelection = new Set(),
+  cageSelectionMode = false,
+  onCageSelectStart,
+  onCageSelectExtend,
   onSelect,
 }: SudokuBoardProps) {
+  const activePointerRef = useRef<number | null>(null);
+  const lastPointerPointRef = useRef<PointerPoint | null>(null);
+  const lastDragCellRef = useRef<number | null>(null);
   const focusCells = new Set(currentStep?.focusCells ?? []);
   const relatedCells = new Set(currentStep?.relatedCells ?? []);
   const removedCandidates = new Set(
@@ -136,9 +154,107 @@ export function SudokuBoard({
     for (const cell of cage.cells) cagesByCell.set(cell, cage);
   }
 
+  const cellAtPoint = (
+    element: HTMLDivElement,
+    clientX: number,
+    clientY: number,
+  ) => {
+    const rect = element.getBoundingClientRect();
+    if (
+      clientX < rect.left ||
+      clientX >= rect.right ||
+      clientY < rect.top ||
+      clientY >= rect.bottom
+    ) {
+      return null;
+    }
+    const column = Math.min(
+      8,
+      Math.floor(((clientX - rect.left) / rect.width) * 9),
+    );
+    const row = Math.min(
+      8,
+      Math.floor(((clientY - rect.top) / rect.height) * 9),
+    );
+    return row * 9 + column;
+  };
+
+  const finishCageDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (activePointerRef.current !== event.pointerId) return;
+    activePointerRef.current = null;
+    lastPointerPointRef.current = null;
+    lastDragCellRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const startCageDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (
+      !cageSelectionMode ||
+      !event.isPrimary ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    ) {
+      return;
+    }
+    const cell = cellAtPoint(
+      event.currentTarget,
+      event.clientX,
+      event.clientY,
+    );
+    if (cell === null) return;
+    event.preventDefault();
+    activePointerRef.current = event.pointerId;
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
+    lastDragCellRef.current = cell;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onCageSelectStart?.(cell);
+  };
+
+  const extendCageDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (
+      !cageSelectionMode ||
+      activePointerRef.current !== event.pointerId ||
+      !lastPointerPointRef.current
+    ) {
+      return;
+    }
+    event.preventDefault();
+    const previous = lastPointerPointRef.current;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const distance = Math.hypot(
+      event.clientX - previous.x,
+      event.clientY - previous.y,
+    );
+    const sampleSize = Math.max(3, Math.min(rect.width, rect.height) / 27);
+    const sampleCount = Math.max(1, Math.ceil(distance / sampleSize));
+    for (let sample = 1; sample <= sampleCount; sample += 1) {
+      const progress = sample / sampleCount;
+      const cell = cellAtPoint(
+        event.currentTarget,
+        previous.x + (event.clientX - previous.x) * progress,
+        previous.y + (event.clientY - previous.y) * progress,
+      );
+      if (cell !== null && cell !== lastDragCellRef.current) {
+        lastDragCellRef.current = cell;
+        onCageSelectExtend?.(cell);
+      }
+    }
+    lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
+  };
+
   return (
     <div className="board-frame">
-      <div className="sudoku-board" role="grid" aria-label="九乘九数独盘面">
+      <div
+        className={`sudoku-board ${cageSelectionMode ? "cage-drawing" : ""}`}
+        role="grid"
+        aria-label="九乘九数独盘面"
+        onPointerDown={startCageDrag}
+        onPointerMove={extendCageDrag}
+        onPointerUp={finishCageDrag}
+        onPointerCancel={finishCageDrag}
+        onLostPointerCapture={finishCageDrag}
+      >
         {Array.from({ length: 81 }, (_, cell) => {
           const row = Math.floor(cell / 9);
           const column = cell % 9;
@@ -174,7 +290,13 @@ export function SudokuBoard({
               aria-selected={isSelected || cageSelection.has(cell)}
               className={cellClasses}
               key={cell}
-              onClick={() => onSelect(cell)}
+              onClick={(event) => {
+                if (cageSelectionMode) {
+                  if (event.detail === 0) onCageSelectStart?.(cell);
+                  return;
+                }
+                onSelect(cell);
+              }}
               tabIndex={isSelected || (selectedCell === null && cell === 0) ? 0 : -1}
             >
               {value ? (

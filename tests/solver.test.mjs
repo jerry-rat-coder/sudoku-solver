@@ -19,8 +19,20 @@ import {
 import {
   findKillerCageStep,
   solveKillerSudoku,
+  updateKillerSelection,
   validateKillerCages,
 } from "../lib/sudoku/killer.ts";
+
+test("Killer cage drawing restarts only for a new disconnected gesture", () => {
+  const connected = updateKillerSelection(new Set([0]), 1, true);
+  assert.deepEqual([...connected], [0, 1]);
+
+  const restarted = updateKillerSelection(connected, 20, true);
+  assert.deepEqual([...restarted], [20]);
+
+  const ignoredDuringDrag = updateKillerSelection(connected, 20, false);
+  assert.deepEqual([...ignoredDuringDrag], [0, 1]);
+});
 
 test("Killer cages enforce standard size, connectivity, sum, and coverage rules", () => {
   const issues = validateKillerCages(
