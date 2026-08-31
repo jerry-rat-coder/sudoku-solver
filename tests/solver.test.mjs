@@ -64,19 +64,38 @@ test("Killer cage combinations eliminate digits outside the distinct target sum"
   );
 });
 
-test("a complete Killer Sudoku layout solves with replayable snapshots", () => {
-  const example = KILLER_SUDOKU_EXAMPLES[0];
-  const result = solveKillerSudoku(parsePuzzle(example.puzzle), example.cages);
+test("all Killer Sudoku examples solve with replayable snapshots", () => {
+  for (const example of KILLER_SUDOKU_EXAMPLES) {
+    const result = solveKillerSudoku(parsePuzzle(example.puzzle), example.cages);
 
-  assert.equal(result.status, "solved");
-  assert.equal(result.snapshots.length, result.steps.length + 1);
-  assert.ok(result.steps.some((step) => step.technique === "killer-cage-combination"));
-  const finalValues = result.snapshots.at(-1).values;
-  for (const cage of example.cages) {
-    const values = cage.cells.map((cell) => finalValues[cell]);
-    assert.equal(values.reduce((sum, value) => sum + value, 0), cage.sum);
-    assert.equal(new Set(values).size, values.length);
+    assert.equal(result.status, "solved", example.name);
+    assert.equal(result.snapshots.length, result.steps.length + 1);
+    assert.ok(result.steps.some((step) => step.technique === "killer-cage-combination"));
+    const finalValues = result.snapshots.at(-1).values;
+    for (const cage of example.cages) {
+      const values = cage.cells.map((cell) => finalValues[cell]);
+      assert.equal(values.reduce((sum, value) => sum + value, 0), cage.sum);
+      assert.equal(new Set(values).size, values.length);
+    }
   }
+});
+
+test("the advanced Killer example mixes cage shapes and includes givens", () => {
+  const example = KILLER_SUDOKU_EXAMPLES[1];
+  const cageSizes = new Set(example.cages.map((cage) => cage.cells.length));
+  const hasTwoDimensionalCage = example.cages.some((cage) => {
+    const rows = new Set(cage.cells.map((cell) => Math.floor(cell / 9)));
+    const columns = new Set(cage.cells.map((cell) => cell % 9));
+    return rows.size > 1 && columns.size > 1;
+  });
+
+  assert.deepEqual([...cageSizes].sort(), [2, 3, 4, 5]);
+  assert.ok(hasTwoDimensionalCage);
+  assert.ok(parsePuzzle(example.puzzle).filter(Boolean).length >= 9);
+  assert.deepEqual(
+    validateKillerCages(example.cages, { requireCoverage: true }),
+    [],
+  );
 });
 
 test("all bundled examples are solved by the human technique registry", () => {

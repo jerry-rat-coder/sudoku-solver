@@ -45,6 +45,59 @@ export function parsePuzzle(puzzle: string) {
 const KILLER_SAMPLE_SOLUTION =
   "162857493534129678789643521475312986913586742628794135356478219241935867897261354";
 
+const DIVERSE_CAGE_PATTERNS: readonly (readonly (readonly number[])[])[] = [
+  [
+    [0, 1, 2, 4],
+    [3, 6, 7],
+    [5, 8],
+  ],
+  [
+    [0, 1, 2, 3, 6],
+    [4, 5, 7, 8],
+  ],
+  [
+    [0, 3],
+    [1, 2],
+    [6, 7],
+    [4, 5, 8],
+  ],
+];
+
+function cellsForBox(box: number, offsets: readonly number[]) {
+  const rowStart = Math.floor(box / 3) * 3;
+  const columnStart = (box % 3) * 3;
+  return offsets.map(
+    (offset) =>
+      (rowStart + Math.floor(offset / 3)) * 9 +
+      columnStart +
+      (offset % 3),
+  );
+}
+
+function sumForCells(cells: readonly number[]) {
+  return cells.reduce(
+    (sum, cell) => sum + Number(KILLER_SAMPLE_SOLUTION[cell]),
+    0,
+  );
+}
+
+function diverseKillerCages(): KillerCage[] {
+  const patternOrder = [0, 1, 2, 2, 0, 1, 1, 2, 0];
+  return patternOrder.flatMap((patternIndex, box) =>
+    DIVERSE_CAGE_PATTERNS[patternIndex].map((offsets) => {
+      const cells = cellsForBox(box, offsets);
+      return { cells, sum: sumForCells(cells) };
+    }),
+  );
+}
+
+function puzzleWithGivens(cells: readonly number[]) {
+  const givenCells = new Set(cells);
+  return [...KILLER_SAMPLE_SOLUTION]
+    .map((value, cell) => (givenCells.has(cell) ? value : "0"))
+    .join("");
+}
+
 export interface KillerSudokuExample {
   name: string;
   difficulty: string;
@@ -64,11 +117,14 @@ export const KILLER_SUDOKU_EXAMPLES: readonly KillerSudokuExample[] = [
       const cells = [row * 9 + column, row * 9 + column + 1, row * 9 + column + 2];
       return {
         cells,
-        sum: cells.reduce(
-          (sum, cell) => sum + Number(KILLER_SAMPLE_SOLUTION[cell]),
-          0,
-        ),
+        sum: sumForCells(cells),
       };
     }),
+  },
+  {
+    name: "异形笼练习",
+    difficulty: "进阶",
+    puzzle: puzzleWithGivens([0, 4, 8, 27, 40, 44, 54, 67, 80]),
+    cages: diverseKillerCages(),
   },
 ];
