@@ -107,3 +107,14 @@ test("mobile entry toolbar keeps the puzzle clear action visible", async () => {
     /@media \(max-width: 700px\)[\s\S]*\.input-actions\s*\{[^}]*grid-column:\s*1 \/ -1[^}]*justify-content:\s*flex-end/s,
   );
 });
+
+test("Killer cage sums use an auto-saving range control", async () => {
+  const component = await readFile(
+    new URL("../src/components/SudokuApp.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(component, /className="cage-sum-slider"[\s\S]*type="range"/);
+  assert.match(component, /切换输入模式或点击空白处时自动保存/);
+  assert.doesNotMatch(component, />\s*添加笼\s*</);
+});

@@ -48,6 +48,17 @@ export function killerCageBounds(size: number): KillerCageBounds | null {
   };
 }
 
+export function killerCageDefaultSum(size: number) {
+  const bounds = killerCageBounds(size);
+  return bounds ? (bounds.min + bounds.max) / 2 : null;
+}
+
+export function clampKillerCageSum(size: number, sum: number) {
+  const bounds = killerCageBounds(size);
+  if (!bounds || !Number.isFinite(sum)) return null;
+  return Math.min(bounds.max, Math.max(bounds.min, Math.round(sum)));
+}
+
 export function areKillerCellsAdjacent(left: number, right: number) {
   const rowDistance = Math.abs(Math.floor(left / 9) - Math.floor(right / 9));
   const columnDistance = Math.abs((left % 9) - (right % 9));

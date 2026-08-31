@@ -17,11 +17,25 @@ import {
   SUDOKU_EXAMPLES,
 } from "../lib/sudoku/examples.ts";
 import {
+  clampKillerCageSum,
   findKillerCageStep,
+  killerCageDefaultSum,
   solveKillerSudoku,
   updateKillerSelection,
   validateKillerCages,
 } from "../lib/sudoku/killer.ts";
+
+test("Killer cage sum controls default to the midpoint and clamp to bounds", () => {
+  assert.equal(killerCageDefaultSum(2), 10);
+  assert.equal(killerCageDefaultSum(3), 15);
+  assert.equal(killerCageDefaultSum(9), 45);
+  assert.equal(killerCageDefaultSum(0), null);
+
+  assert.equal(clampKillerCageSum(3, 4), 6);
+  assert.equal(clampKillerCageSum(3, 18), 18);
+  assert.equal(clampKillerCageSum(3, 99), 24);
+  assert.equal(clampKillerCageSum(10, 50), null);
+});
 
 test("Killer cage drawing restarts only for a new disconnected gesture", () => {
   const connected = updateKillerSelection(new Set([0]), 1, true);

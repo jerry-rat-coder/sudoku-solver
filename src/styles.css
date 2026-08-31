@@ -383,90 +383,154 @@ select:focus-visible {
   margin-bottom: 16px;
 }
 
-.cage-editor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  margin: 0 0 16px;
-  padding: 13px 14px;
+.cage-sum-picker {
+  width: min(100%, 650px);
+  margin: 12px auto 0;
+  padding: 13px 15px 11px;
   border: 1px solid rgb(46 125 104 / 38%);
-  border-radius: 8px;
+  border-radius: 10px;
   background:
-    linear-gradient(90deg, rgb(221 235 226 / 70%), transparent 72%),
+    linear-gradient(90deg, rgb(221 235 226 / 74%), transparent 76%),
     var(--surface);
+  box-shadow: 0 8px 22px rgb(23 56 49 / 8%);
 }
 
-.cage-editor-copy {
-  min-width: 0;
-}
-
-.cage-editor h2 {
-  margin: 0;
-  font-family: var(--serif);
-  font-size: 1rem;
-}
-
-.cage-editor p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.55;
-}
-
-.cage-editor p.invalid {
-  color: var(--danger);
-}
-
-.cage-editor-controls {
+.cage-sum-picker-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.cage-sum-input {
-  width: 86px;
-  min-height: 36px;
-  padding: 0 9px;
-  border: 1px solid var(--line-dark);
-  border-radius: 6px;
-  background: var(--surface);
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
+.cage-sum-picker-heading > div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.cage-editor-controls button {
-  min-height: 36px;
-  padding: 0 11px;
-  border: 1px solid var(--jade);
-  border-radius: 6px;
+.cage-sum-picker-heading strong {
+  font-family: var(--serif);
+  font-size: 0.9rem;
+}
+
+.cage-sum-picker-heading span,
+.cage-sum-picker p {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.cage-sum-picker-heading output {
+  min-width: 48px;
+  padding: 5px 9px;
+  border-radius: 7px;
   color: #fff;
   background: var(--jade);
-  cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-family: var(--mono);
+  font-size: 1.08rem;
+  font-weight: 800;
+  text-align: center;
 }
 
-.cage-editor-controls button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.cage-editor-controls .cage-clear-button {
+.cage-clear-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
   border-color: var(--danger);
   color: var(--danger);
   background: var(--surface);
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
-.cage-editor-controls .cage-clear-button:hover {
+.cage-clear-button:hover {
   background: var(--danger-soft);
+}
+
+.cage-sum-slider-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.cage-sum-slider-row > span {
+  color: var(--jade-deep);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.cage-sum-slider {
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.cage-sum-slider::-webkit-slider-runnable-track {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--jade) 0 var(--cage-sum-progress),
+    var(--line) var(--cage-sum-progress) 100%
+  );
+}
+
+.cage-sum-slider::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -6.5px;
+  appearance: none;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--jade-deep);
+  box-shadow: 0 1px 5px rgb(23 56 49 / 30%);
+}
+
+.cage-sum-slider::-moz-range-track {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.cage-sum-slider::-moz-range-progress {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--jade);
+}
+
+.cage-sum-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  background: var(--jade-deep);
+  box-shadow: 0 1px 5px rgb(23 56 49 / 30%);
+}
+
+.cage-sum-picker p {
+  margin: 6px 37px 0;
+  line-height: 1.45;
+}
+
+.cage-sum-picker p.invalid {
+  color: var(--danger);
 }
 
 .cage-list {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
-  margin: -5px 0 15px;
+  margin: 0 0 15px;
 }
 
 .cage-list-item {
@@ -1990,13 +2054,22 @@ kbd {
     gap: 9px;
   }
 
-  .cage-editor {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  .cage-sum-picker {
+    margin-top: 9px;
+    padding: 11px 10px 9px;
   }
 
-  .cage-editor-controls {
-    justify-content: flex-end;
+  .cage-sum-picker-heading {
+    gap: 7px;
+  }
+
+  .cage-sum-picker-heading > div span {
+    max-width: 180px;
+  }
+
+  .cage-sum-picker p {
+    margin-right: 36px;
+    margin-left: 36px;
   }
 
   .mode-control {
