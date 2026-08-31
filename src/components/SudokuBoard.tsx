@@ -4,6 +4,7 @@ import {
   type CandidateRef,
   type SolveStep,
 } from "@/lib/sudoku/engine";
+import type { KillerCage } from "@/lib/sudoku/killer";
 
 interface SudokuBoardProps {
   values: readonly number[];
@@ -12,6 +13,8 @@ interface SudokuBoardProps {
   selectedCell: number | null;
   conflicts: ReadonlySet<number>;
   currentStep?: SolveStep;
+  cages?: readonly KillerCage[];
+  cageSelection?: ReadonlySet<number>;
   onSelect: (cell: number) => void;
 }
 
@@ -48,6 +51,22 @@ function commonBox(cells: readonly number[]) {
   return cells.every((cell) => boxIndex(cell) === first) ? first : null;
 }
 
+function cageAnchor(cage: KillerCage) {
+  return Math.min(...cage.cells);
+}
+
+function cageEdgeClasses(cage: KillerCage, cell: number) {
+  const cells = new Set(cage.cells);
+  const row = Math.floor(cell / 9);
+  const column = cell % 9;
+  return [
+    !cells.has(cell - 9) || row === 0 ? "cage-edge-top" : "",
+    !cells.has(cell + 9) || row === 8 ? "cage-edge-bottom" : "",
+    !cells.has(cell - 1) || column === 0 ? "cage-edge-left" : "",
+    !cells.has(cell + 1) || column === 8 ? "cage-edge-right" : "",
+  ];
+}
+
 function candidatePoint({ cell, digit }: CandidateRef) {
   const cellRow = Math.floor(cell / 9);
   const cellColumn = cell % 9;
@@ -66,6 +85,8 @@ export function SudokuBoard({
   selectedCell,
   conflicts,
   currentStep,
+  cages = [],
+  cageSelection = new Set(),
   onSelect,
 }: SudokuBoardProps) {
   const focusCells = new Set(currentStep?.focusCells ?? []);
@@ -110,6 +131,10 @@ export function SudokuBoard({
       ? currentStep.proof.conflict.unit.index
       : null;
   const placedCell = currentStep?.placed?.cell;
+  const cagesByCell = new Map<number, KillerCage>();
+  for (const cage of cages) {
+    for (const cell of cage.cells) cagesByCell.set(cell, cage);
+  }
 
   return (
     <div className="board-frame">
@@ -119,6 +144,8 @@ export function SudokuBoard({
           const column = cell % 9;
           const value = values[cell] ?? 0;
           const isSelected = selectedCell === cell;
+          const cage = cagesByCell.get(cell);
+          const isCageAnchor = cage ? cageAnchor(cage) === cell : false;
           const cellClasses = [
             "sudoku-cell",
             column % 3 === 2 && column !== 8 ? "box-edge-right" : "",
@@ -130,6 +157,9 @@ export function SudokuBoard({
             focusCells.has(cell) ? "step-focus" : "",
             isSelected ? "selected" : "",
             conflicts.has(cell) ? "conflict" : "",
+            cage ? "killer-cage" : "",
+            ...(cage ? cageEdgeClasses(cage, cell) : []),
+            cageSelection.has(cell) ? "cage-selection" : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -140,8 +170,8 @@ export function SudokuBoard({
               role="gridcell"
               aria-label={`第 ${row + 1} 行第 ${column + 1} 列${
                 value ? `，数字 ${value}` : "，空格"
-              }`}
-              aria-selected={isSelected}
+              }${cage ? `，杀手笼和为 ${cage.sum}` : ""}`}
+              aria-selected={isSelected || cageSelection.has(cell)}
               className={cellClasses}
               key={cell}
               onClick={() => onSelect(cell)}
@@ -189,6 +219,11 @@ export function SudokuBoard({
                   })}
                 </span>
               )}
+              {isCageAnchor ? (
+                <span className="cage-sum" aria-hidden="true">
+                  {cage!.sum}
+                </span>
+              ) : null}
             </button>
           );
         })}

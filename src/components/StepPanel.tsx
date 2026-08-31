@@ -159,6 +159,7 @@ const CATEGORY_LABELS: Record<TechniqueCategory, string> = {
   wing: "翼形技巧",
   chain: "强弱链",
   forcing: "链式反证",
+  killer: "杀手笼约束",
 };
 
 function ProofSummary({

@@ -28,11 +28,20 @@ import {
   type SolveResult,
 } from "@/lib/sudoku/engine";
 import {
+  isKillerCageContiguous,
+  killerCageBounds,
+  killerConflictCellsForValues,
+  solveKillerSudoku,
+  type KillerCage,
+} from "@/lib/sudoku/killer";
+import {
+  KILLER_SUDOKU_EXAMPLES,
   parsePuzzle,
   SUDOKU_EXAMPLES,
 } from "@/lib/sudoku/examples";
 
-type InputMode = "value" | "candidate";
+type InputMode = "value" | "candidate" | "cage";
+type PuzzleMode = "classic" | "killer";
 
 interface OcrDialogState {
   phase: "processing" | "review" | "error";
@@ -57,7 +66,15 @@ function firstEmpty(values: readonly number[]) {
   return index === -1 ? 0 : index;
 }
 
-function BoardFooter({ selectedCell }: { selectedCell: number | null }) {
+function BoardFooter({
+  selectedCell,
+  puzzleMode,
+  cageCount,
+}: {
+  selectedCell: number | null;
+  puzzleMode: PuzzleMode;
+  cageCount: number;
+}) {
   return (
     <div className="board-footer">
       <div className="legend">
@@ -73,12 +90,18 @@ function BoardFooter({ selectedCell }: { selectedCell: number | null }) {
         <span>
           <i className="legend-remove" /> 候选排除
         </span>
+        {puzzleMode === "killer" ? (
+          <span>
+            <i className="legend-cage" /> 杀手笼
+          </span>
+        ) : null}
       </div>
       <p>
         当前单元格{" "}
         <strong>
           {selectedCell === null ? "未选择" : toCellName(selectedCell)}
         </strong>
+        {puzzleMode === "killer" ? ` · ${cageCount} 个笼` : ""}
       </p>
     </div>
   );
@@ -90,6 +113,12 @@ export default function SudokuApp() {
   );
   const [values, setValues] = useState<number[]>(() => [...EMPTY_VALUES]);
   const [notes, setNotes] = useState<number[]>([...EMPTY_NOTES]);
+  const [puzzleMode, setPuzzleMode] = useState<PuzzleMode>("classic");
+  const [cages, setCages] = useState<KillerCage[]>([]);
+  const [selectedCageCells, setSelectedCageCells] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [cageSumInput, setCageSumInput] = useState("");
   const [selectedCell, setSelectedCell] = useState<number | null>(0);
   const [inputMode, setInputMode] = useState<InputMode>("value");
   const [result, setResult] = useState<SolveResult | null>(null);
@@ -107,8 +136,11 @@ export default function SudokuApp() {
     [values],
   );
   const conflicts = useMemo(
-    () => conflictCellsForValues(values),
-    [values],
+    () =>
+      puzzleMode === "killer"
+        ? killerConflictCellsForValues(values, cages)
+        : conflictCellsForValues(values),
+    [cages, puzzleMode, values],
   );
   const displaySnapshot = result?.snapshots[stepIndex];
   const displayValues = displaySnapshot?.values ?? values;
@@ -116,6 +148,33 @@ export default function SudokuApp() {
   const currentStep =
     result && stepIndex > 0 ? result.steps[stepIndex - 1] : undefined;
   const filledCount = values.filter(Boolean).length;
+  const selectedCageCellList = useMemo(
+    () => [...selectedCageCells].sort((left, right) => left - right),
+    [selectedCageCells],
+  );
+  const cageDraft = useMemo(() => {
+    const bounds = killerCageBounds(selectedCageCellList.length);
+    if (selectedCageCellList.length === 0) {
+      return { canSave: false, bounds, message: "选择上下左右相连的格子后，填写该笼的和数。" };
+    }
+    if (selectedCageCellList.length < 2) {
+      return { canSave: false, bounds, message: "杀手笼至少需要选中 2 格。" };
+    }
+    if (selectedCageCellList.length > 9) {
+      return { canSave: false, bounds, message: "杀手笼最多只能包含 9 格。" };
+    }
+    if (!isKillerCageContiguous(selectedCageCellList)) {
+      return { canSave: false, bounds, message: "选中的格子必须通过上下左右连续相连。" };
+    }
+    if (!cageSumInput.trim()) {
+      return { canSave: false, bounds, message: `已选 ${selectedCageCellList.length} 格；允许的和数为 ${bounds!.min}–${bounds!.max}。` };
+    }
+    const sum = Number(cageSumInput);
+    if (!Number.isInteger(sum) || sum < bounds!.min || sum > bounds!.max) {
+      return { canSave: false, bounds, message: `该 ${selectedCageCellList.length} 格笼的和数必须是 ${bounds!.min}–${bounds!.max} 的整数。` };
+    }
+    return { canSave: true, bounds, message: `和数 ${sum} 合法；笼内数字将按标准规则不重复。`, sum };
+  }, [cageSumInput, selectedCageCellList]);
 
   const navigateTo = useCallback(
     (nextRoute: AppRoute, replace = false) => {
@@ -195,7 +254,7 @@ export default function SudokuApp() {
 
   const inputDigit = useCallback(
     (digit: number) => {
-      if (selectedCell === null || result) return;
+      if (selectedCell === null || result || inputMode === "cage") return;
       if (inputMode === "value") {
         setValues((current) =>
           current.map((value, cell) => (cell === selectedCell ? digit : value)),
@@ -217,7 +276,7 @@ export default function SudokuApp() {
   );
 
   const eraseSelected = useCallback(() => {
-    if (selectedCell === null || result) return;
+    if (selectedCell === null || result || inputMode === "cage") return;
     setValues((current) =>
       current.map((value, cell) => (cell === selectedCell ? 0 : value)),
     );
@@ -225,7 +284,25 @@ export default function SudokuApp() {
       current.map((mask, cell) => (cell === selectedCell ? 0 : mask)),
     );
     invalidateResult();
-  }, [invalidateResult, result, selectedCell]);
+  }, [inputMode, invalidateResult, result, selectedCell]);
+
+  const handleBoardSelect = useCallback(
+    (cell: number) => {
+      if (puzzleMode === "killer" && inputMode === "cage" && !result) {
+        if (cages.some((cage) => cage.cells.includes(cell))) return;
+        setSelectedCell(cell);
+        setSelectedCageCells((current) => {
+          const next = new Set(current);
+          if (next.has(cell)) next.delete(cell);
+          else next.add(cell);
+          return next;
+        });
+        return;
+      }
+      setSelectedCell(cell);
+    },
+    [cages, inputMode, puzzleMode, result],
+  );
 
   const moveSelection = useCallback((direction: string) => {
     setSelectedCell((current) => {
@@ -262,8 +339,8 @@ export default function SudokuApp() {
       if (ocrDialog) return;
       const target = event.target as HTMLElement | null;
       if (
-        target?.tagName === "INPUT" &&
-        (target as HTMLInputElement).type === "range"
+        target?.tagName === "INPUT" ||
+        target?.tagName === "SELECT"
       ) {
         return;
       }
@@ -314,6 +391,22 @@ export default function SudokuApp() {
   ]);
 
   const loadExample = () => {
+    if (puzzleMode === "killer") {
+      const nextIndex = (exampleIndex + 1) % KILLER_SUDOKU_EXAMPLES.length;
+      const example = KILLER_SUDOKU_EXAMPLES[nextIndex];
+      const nextValues = parsePuzzle(example.puzzle);
+      setExampleIndex(nextIndex);
+      setValues(nextValues);
+      setNotes([...EMPTY_NOTES]);
+      setCages(example.cages.map((cage) => ({ ...cage, cells: [...cage.cells] })));
+      setSelectedCageCells(new Set());
+      setCageSumInput("");
+      setSelectedCell(firstEmpty(nextValues));
+      setResult(null);
+      setStepIndex(0);
+      setSourceLabel(`${example.name} · ${example.difficulty}`);
+      return;
+    }
     const nextIndex = (exampleIndex + 1) % SUDOKU_EXAMPLES.length;
     const example = SUDOKU_EXAMPLES[nextIndex];
     const nextValues = parsePuzzle(example.puzzle);
@@ -329,18 +422,58 @@ export default function SudokuApp() {
   const clearPuzzle = () => {
     setValues([...EMPTY_VALUES]);
     setNotes([...EMPTY_NOTES]);
+    setCages([]);
+    setSelectedCageCells(new Set());
+    setCageSumInput("");
     setSelectedCell(0);
     setResult(null);
     setStepIndex(0);
-    setSourceLabel("空白题目");
+    setSourceLabel(puzzleMode === "killer" ? "空白杀手数独" : "空白题目");
+  };
+
+  const changePuzzleMode = (nextMode: PuzzleMode) => {
+    setPuzzleMode(nextMode);
+    setInputMode(nextMode === "killer" ? "cage" : "value");
+    setSelectedCageCells(new Set());
+    setCageSumInput("");
+    setExampleIndex(-1);
+    setResult(null);
+    setStepIndex(0);
+    setSourceLabel(
+      values.some(Boolean)
+        ? `自定义${nextMode === "killer" ? "杀手数独" : "经典数独"}`
+        : nextMode === "killer"
+          ? "空白杀手数独"
+          : "空白题目",
+    );
+  };
+
+  const addCage = () => {
+    if (!cageDraft.canSave || cageDraft.sum === undefined) return;
+    setCages((current) => [
+      ...current,
+      { cells: selectedCageCellList, sum: cageDraft.sum! },
+    ]);
+    setSelectedCageCells(new Set());
+    setCageSumInput("");
+    invalidateResult();
+  };
+
+  const removeCage = (index: number) => {
+    setCages((current) => current.filter((_, cageIndex) => cageIndex !== index));
+    invalidateResult();
   };
 
   const startSolving = () => {
     const hasCandidateRestrictions = notes.some((mask) => mask !== 0);
-    const nextResult = solveSudoku(values, {
+    const options = {
       candidatePolicy: hasCandidateRestrictions ? "respect" : "recompute",
       candidates: notes,
-    });
+    } as const;
+    const nextResult =
+      puzzleMode === "killer"
+        ? solveKillerSudoku(values, cages, options)
+        : solveSudoku(values, options);
     const finalStep = nextResult.steps.at(-1);
     setResult(nextResult);
     setStepIndex(nextResult.steps.length);
@@ -446,6 +579,7 @@ export default function SudokuApp() {
     });
     setValues(nextValues);
     setNotes([...EMPTY_NOTES]);
+    setSelectedCageCells(new Set());
     setSelectedCell(firstEmpty(nextValues));
     setResult(null);
     setStepIndex(0);
@@ -488,12 +622,23 @@ export default function SudokuApp() {
         <div className="header-actions">
           {route === "entry" ? (
             <>
+              <label className="puzzle-mode-select">
+                <span>题型</span>
+                <select
+                  value={puzzleMode}
+                  onChange={(event) => changePuzzleMode(event.target.value as PuzzleMode)}
+                  aria-label="数独模式"
+                >
+                  <option value="classic">经典数独</option>
+                  <option value="killer">杀手数独</option>
+                </select>
+              </label>
               <button type="button" className="secondary" onClick={loadExample}>
-                示例题目
+                {puzzleMode === "killer" ? "杀手示例" : "示例题目"}
                 <small>
                   {exampleIndex < 0
-                    ? `共 ${SUDOKU_EXAMPLES.length} 题`
-                    : `${exampleIndex + 1}/${SUDOKU_EXAMPLES.length}`}
+                    ? `共 ${puzzleMode === "killer" ? KILLER_SUDOKU_EXAMPLES.length : SUDOKU_EXAMPLES.length} 题`
+                    : `${exampleIndex + 1}/${puzzleMode === "killer" ? KILLER_SUDOKU_EXAMPLES.length : SUDOKU_EXAMPLES.length}`}
                 </small>
               </button>
               <button type="button" className="ghost" onClick={clearPuzzle}>
@@ -555,6 +700,15 @@ export default function SudokuApp() {
                   >
                     候选数
                   </button>
+                  {puzzleMode === "killer" ? (
+                    <button
+                      type="button"
+                      className={inputMode === "cage" ? "active" : ""}
+                      onClick={() => setInputMode("cage")}
+                    >
+                      画笼子
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -564,6 +718,7 @@ export default function SudokuApp() {
                     type="button"
                     key={digit}
                     onClick={() => inputDigit(digit)}
+                    disabled={inputMode === "cage"}
                   >
                     {digit}
                   </button>
@@ -574,10 +729,56 @@ export default function SudokuApp() {
                 type="button"
                 className="erase-button"
                 onClick={eraseSelected}
+                disabled={inputMode === "cage"}
               >
                 擦除
               </button>
             </div>
+
+            {puzzleMode === "killer" ? (
+              <>
+                <div className="cage-editor" aria-label="杀手笼设定">
+                  <div className="cage-editor-copy">
+                    <h2>杀手笼设定</h2>
+                    <p className={cageDraft.canSave ? "" : "invalid"}>
+                      {cageDraft.message}
+                    </p>
+                  </div>
+                  <div className="cage-editor-controls">
+                    <input
+                      className="cage-sum-input"
+                      type="number"
+                      inputMode="numeric"
+                      min={cageDraft.bounds?.min}
+                      max={cageDraft.bounds?.max}
+                      placeholder="和数"
+                      value={cageSumInput}
+                      onChange={(event) => setCageSumInput(event.target.value)}
+                      aria-label="杀手笼累加和"
+                    />
+                    <button type="button" onClick={addCage} disabled={!cageDraft.canSave}>
+                      添加笼
+                    </button>
+                  </div>
+                </div>
+                {cages.length ? (
+                  <div className="cage-list" aria-label="已添加的杀手笼">
+                    {cages.map((cage, index) => (
+                      <div className="cage-list-item" key={`${cage.sum}-${cage.cells.join("-")}`}>
+                        和 {cage.sum} · {cage.cells.length} 格
+                        <button
+                          type="button"
+                          onClick={() => removeCage(index)}
+                          aria-label={`移除和为 ${cage.sum} 的杀手笼`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             <SudokuBoard
               values={values}
@@ -585,9 +786,11 @@ export default function SudokuApp() {
               givens={givens}
               selectedCell={selectedCell}
               conflicts={conflicts}
-              onSelect={setSelectedCell}
+              cages={puzzleMode === "killer" ? cages : []}
+              cageSelection={puzzleMode === "killer" ? selectedCageCells : undefined}
+              onSelect={handleBoardSelect}
             />
-            <BoardFooter selectedCell={selectedCell} />
+            <BoardFooter selectedCell={selectedCell} puzzleMode={puzzleMode} cageCount={cages.length} />
           </section>
         </div>
       ) : (
@@ -603,14 +806,15 @@ export default function SudokuApp() {
               selectedCell={selectedCell}
               conflicts={conflicts}
               currentStep={currentStep}
-              onSelect={setSelectedCell}
+              cages={puzzleMode === "killer" ? cages : []}
+              onSelect={handleBoardSelect}
             />
             <StepPlayer
               result={result}
               stepIndex={stepIndex}
               onStepChange={changeStep}
             />
-            <BoardFooter selectedCell={selectedCell} />
+            <BoardFooter selectedCell={selectedCell} puzzleMode={puzzleMode} cageCount={cages.length} />
           </section>
 
           <StepPanel
@@ -623,9 +827,9 @@ export default function SudokuApp() {
 
       <footer className="app-footer">
         <p>
-          v0.4 · 图片 OCR 录题 · AIC、西尾链与强制网
+          v0.5 · 经典数独／杀手数独 · 图片 OCR 录题
         </p>
-        <p>每次变化后从最简单技巧重扫；高阶反证保留可追溯的因果节点。</p>
+        <p>杀手笼遵循和数与不重复规则；OCR 暂不识别笼子和和数。</p>
       </footer>
 
       {ocrDialog ? (

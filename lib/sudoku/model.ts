@@ -9,7 +9,8 @@ export type TechniqueCategory =
   | "fish"
   | "wing"
   | "chain"
-  | "forcing";
+  | "forcing"
+  | "killer";
 
 export type TechniqueId =
   | "naked-single"
@@ -32,7 +33,9 @@ export type TechniqueId =
   | "xy-chain"
   | "aic"
   | "nishio-chain"
-  | "forcing-net";
+  | "forcing-net"
+  | "killer-cage-combination"
+  | "killer-constraint-search";
 
 export interface CandidateRef {
   cell: number;

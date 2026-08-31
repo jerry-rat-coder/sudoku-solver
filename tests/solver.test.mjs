@@ -6,14 +6,66 @@ import {
   TECHNIQUE_CATALOG,
   bit,
   countBits,
+  createBoard,
   digitInMask,
   findNextStepForSnapshot,
   solveSudoku,
 } from "../lib/sudoku/engine.ts";
 import {
+  KILLER_SUDOKU_EXAMPLES,
   parsePuzzle,
   SUDOKU_EXAMPLES,
 } from "../lib/sudoku/examples.ts";
+import {
+  findKillerCageStep,
+  solveKillerSudoku,
+  validateKillerCages,
+} from "../lib/sudoku/killer.ts";
+
+test("Killer cages enforce standard size, connectivity, sum, and coverage rules", () => {
+  const issues = validateKillerCages(
+    [
+      { cells: [0, 2], sum: 3 },
+      { cells: [10], sum: 1 },
+    ],
+    { requireCoverage: true },
+  );
+
+  assert.ok(issues.some((issue) => issue.message.includes("上下左右相连")));
+  assert.ok(issues.some((issue) => issue.message.includes("2 到 9")));
+  assert.ok(issues.some((issue) => issue.message.includes("恰好覆盖全部 81 格")));
+});
+
+test("Killer cage combinations eliminate digits outside the distinct target sum", () => {
+  const board = createBoard(Array(81).fill(0));
+  const step = findKillerCageStep(board, [{ cells: [0, 1], sum: 3 }]);
+
+  assert.ok(step);
+  assert.equal(step.technique, "killer-cage-combination");
+  assert.deepEqual(
+    step.removed.filter(({ cell }) => cell === 0).map(({ digit }) => digit),
+    [3, 4, 5, 6, 7, 8, 9],
+  );
+  assert.deepEqual(
+    step.removed.filter(({ cell }) => cell === 1).map(({ digit }) => digit),
+    [3, 4, 5, 6, 7, 8, 9],
+  );
+});
+
+test("a complete Killer Sudoku layout solves with replayable snapshots", () => {
+  const example = KILLER_SUDOKU_EXAMPLES[0];
+  const result = solveKillerSudoku(parsePuzzle(example.puzzle), example.cages);
+
+  assert.equal(result.status, "solved");
+  assert.equal(result.snapshots.length, result.steps.length + 1);
+  assert.ok(result.steps.some((step) => step.technique === "killer-cage-combination"));
+  const finalValues = result.snapshots.at(-1).values;
+  for (const cage of example.cages) {
+    const values = cage.cells.map((cell) => finalValues[cell]);
+    assert.equal(values.reduce((sum, value) => sum + value, 0), cage.sum);
+    assert.equal(new Set(values).size, values.length);
+  }
+});
 
 test("all bundled examples are solved by the human technique registry", () => {
   for (const example of SUDOKU_EXAMPLES) {

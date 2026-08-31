@@ -1,3 +1,5 @@
+import type { KillerCage } from "./killer.ts";
+
 export interface SudokuExample {
   name: string;
   difficulty: string;
@@ -39,3 +41,34 @@ export function parsePuzzle(puzzle: string) {
     .split("")
     .map((value) => (value === "." ? 0 : Number(value)));
 }
+
+const KILLER_SAMPLE_SOLUTION =
+  "162857493534129678789643521475312986913586742628794135356478219241935867897261354";
+
+export interface KillerSudokuExample {
+  name: string;
+  difficulty: string;
+  puzzle: string;
+  cages: readonly KillerCage[];
+}
+
+/** A complete, orthogonally connected cage layout with no ordinary givens. */
+export const KILLER_SUDOKU_EXAMPLES: readonly KillerSudokuExample[] = [
+  {
+    name: "三格笼演示",
+    difficulty: "标准",
+    puzzle: "0".repeat(81),
+    cages: Array.from({ length: 27 }, (_, index) => {
+      const row = Math.floor(index / 3);
+      const column = (index % 3) * 3;
+      const cells = [row * 9 + column, row * 9 + column + 1, row * 9 + column + 2];
+      return {
+        cells,
+        sum: cells.reduce(
+          (sum, cell) => sum + Number(KILLER_SAMPLE_SOLUTION[cell]),
+          0,
+        ),
+      };
+    }),
+  },
+];
