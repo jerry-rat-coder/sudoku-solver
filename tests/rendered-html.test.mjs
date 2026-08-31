@@ -88,3 +88,22 @@ test("Killer cage drawing disables touch scrolling while dragging", async () => 
     /\.sudoku-board\.cage-drawing\s*\{[^}]*touch-action:\s*none/s,
   );
 });
+
+test("mobile entry toolbar keeps the puzzle clear action visible", async () => {
+  const [component, css] = await Promise.all([
+    readFile(
+      new URL("../src/components/SudokuApp.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../src/styles.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(
+    component,
+    /className="input-actions"[\s\S]*className="clear-puzzle-button"[\s\S]*清空题盘/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width: 700px\)[\s\S]*\.input-actions\s*\{[^}]*grid-column:\s*1 \/ -1[^}]*justify-content:\s*flex-end/s,
+  );
+});

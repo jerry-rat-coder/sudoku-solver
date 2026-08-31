@@ -435,8 +435,7 @@ select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.cage-editor-controls button,
-.cage-list button {
+.cage-editor-controls button {
   min-height: 36px;
   padding: 0 11px;
   border: 1px solid var(--jade);
@@ -453,6 +452,16 @@ select:focus-visible {
   opacity: 0.45;
 }
 
+.cage-editor-controls .cage-clear-button {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--surface);
+}
+
+.cage-editor-controls .cage-clear-button:hover {
+  background: var(--danger-soft);
+}
+
 .cage-list {
   display: flex;
   flex-wrap: wrap;
@@ -463,31 +472,31 @@ select:focus-visible {
 .cage-list-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 5px 5px 9px;
+  min-height: 30px;
+  padding: 5px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   color: var(--muted);
+  cursor: pointer;
   font-family: var(--mono);
   font-size: 0.68rem;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out,
+    color 120ms ease-out;
 }
 
-.cage-list button {
-  min-height: 22px;
-  min-width: 22px;
-  padding: 0;
-  border-color: transparent;
-  border-radius: 50%;
-  color: var(--muted);
-  background: transparent;
-  font-size: 0.95rem;
-  line-height: 1;
+.cage-list-item:hover {
+  border-color: var(--jade);
+  color: var(--jade-deep);
+  background: var(--jade-soft);
 }
 
-.cage-list button:hover {
-  color: var(--danger);
-  background: var(--danger-soft);
+.cage-list-item.selected {
+  border-color: var(--jade);
+  color: #fff;
+  background: var(--jade);
 }
 
 .mode-control {
@@ -544,6 +553,7 @@ select:focus-visible {
 
 .number-pad button,
 .erase-button,
+.clear-puzzle-button,
 .edit-button {
   min-width: 32px;
   min-height: 36px;
@@ -561,6 +571,7 @@ select:focus-visible {
 
 .number-pad button:hover:not(:disabled),
 .erase-button:hover,
+.clear-puzzle-button:hover,
 .edit-button:hover {
   border-color: var(--jade);
   background: var(--jade-soft);
@@ -577,12 +588,23 @@ select:focus-visible {
 }
 
 .erase-button,
+.clear-puzzle-button,
 .edit-button {
   min-width: 74px;
   color: var(--muted);
   font-family: var(--sans);
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.input-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.clear-puzzle-button {
+  color: var(--danger);
+  white-space: nowrap;
 }
 
 .edit-button {
@@ -1993,9 +2015,15 @@ kbd {
   }
 
   .erase-button,
+  .clear-puzzle-button,
   .edit-button {
     min-width: 56px;
     min-height: 32px;
+  }
+
+  .input-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
   }
 
   .board-frame {

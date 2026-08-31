@@ -119,6 +119,7 @@ export default function SudokuApp() {
   const [selectedCageCells, setSelectedCageCells] = useState<Set<number>>(
     () => new Set(),
   );
+  const [editingCageIndex, setEditingCageIndex] = useState<number | null>(null);
   const [cageSumInput, setCageSumInput] = useState("");
   const [selectedCell, setSelectedCell] = useState<number | null>(0);
   const [inputMode, setInputMode] = useState<InputMode>("value");
@@ -131,6 +132,7 @@ export default function SudokuApp() {
   const ocrRunRef = useRef(0);
   const ocrAbortRef = useRef<AbortController | null>(null);
   const ocrImageUrlRef = useRef<string | null>(null);
+  const preserveCageSumRef = useRef(false);
 
   const givens = useMemo(
     () => values.map((value) => value !== 0),
@@ -179,9 +181,20 @@ export default function SudokuApp() {
 
   useEffect(() => {
     if (puzzleMode !== "killer" || inputMode !== "cage") return;
+    if (preserveCageSumRef.current) {
+      preserveCageSumRef.current = false;
+      return;
+    }
     const bounds = killerCageBounds(selectedCageCells.size);
     setCageSumInput(bounds ? String(bounds.min) : "");
   }, [inputMode, puzzleMode, selectedCageCells]);
+
+  const clearCageDraft = useCallback(() => {
+    preserveCageSumRef.current = false;
+    setSelectedCageCells(new Set());
+    setEditingCageIndex(null);
+    setCageSumInput("");
+  }, []);
 
   const navigateTo = useCallback(
     (nextRoute: AppRoute, replace = false) => {
@@ -293,41 +306,83 @@ export default function SudokuApp() {
     invalidateResult();
   }, [inputMode, invalidateResult, result, selectedCell]);
 
-  const handleCageSelectStart = useCallback(
-    (cell: number) => {
-      if (cages.some((cage) => cage.cells.includes(cell))) return;
-      setSelectedCell(cell);
-      setSelectedCageCells((current) => {
-        const next = updateKillerSelection(current, cell, true);
-        return next.size <= 9 ? next : current;
-      });
+  const selectCageForEditing = useCallback(
+    (cageIndex: number, focusCell?: number) => {
+      const cage = cages[cageIndex];
+      if (!cage) return;
+      preserveCageSumRef.current = true;
+      setEditingCageIndex(cageIndex);
+      setSelectedCageCells(new Set(cage.cells));
+      setCageSumInput(String(cage.sum));
+      setSelectedCell(focusCell ?? cage.cells[0] ?? null);
     },
     [cages],
   );
 
+  const handleCageSelectStart = useCallback(
+    (cell: number) => {
+      const occupiedCageIndex = cages.findIndex((cage) =>
+        cage.cells.includes(cell),
+      );
+      if (
+        occupiedCageIndex !== -1 &&
+        occupiedCageIndex !== editingCageIndex
+      ) {
+        selectCageForEditing(occupiedCageIndex, cell);
+        return;
+      }
+      setSelectedCell(cell);
+      setSelectedCageCells((current) => {
+        if (editingCageIndex !== null && current.has(cell)) {
+          const next = new Set(current);
+          next.delete(cell);
+          return next;
+        }
+        const next = updateKillerSelection(current, cell, true);
+        if (
+          editingCageIndex !== null &&
+          current.size > 0 &&
+          next.size === 1 &&
+          !current.has(cell)
+        ) {
+          setEditingCageIndex(null);
+        }
+        return next.size <= 9 ? next : current;
+      });
+    },
+    [cages, editingCageIndex, selectCageForEditing],
+  );
+
   const handleCageSelectExtend = useCallback(
     (cell: number) => {
-      if (cages.some((cage) => cage.cells.includes(cell))) return;
+      const occupiedCageIndex = cages.findIndex((cage) =>
+        cage.cells.includes(cell),
+      );
+      if (
+        occupiedCageIndex !== -1 &&
+        occupiedCageIndex !== editingCageIndex
+      ) {
+        return;
+      }
       setSelectedCell(cell);
       setSelectedCageCells((current) => {
         const next = updateKillerSelection(current, cell, false);
         return next.size <= 9 ? next : current;
       });
     },
-    [cages],
+    [cages, editingCageIndex],
   );
 
   const changeInputMode = useCallback(
     (nextMode: InputMode) => {
       if (nextMode === inputMode) return;
       if (inputMode === "cage" || nextMode === "cage") {
-        setSelectedCageCells(new Set());
-        setCageSumInput("");
+        clearCageDraft();
         setSelectedCell(null);
       }
       setInputMode(nextMode);
     },
-    [inputMode],
+    [clearCageDraft, inputMode],
   );
 
   const moveSelection = useCallback((direction: string) => {
@@ -424,9 +479,13 @@ export default function SudokuApp() {
       setExampleIndex(nextIndex);
       setValues(nextValues);
       setNotes([...EMPTY_NOTES]);
-      setCages(example.cages.map((cage) => ({ ...cage, cells: [...cage.cells] })));
-      setSelectedCageCells(new Set());
-      setCageSumInput("");
+      setCages(
+        example.cages.map((cage) => ({
+          ...cage,
+          cells: [...cage.cells],
+        })),
+      );
+      clearCageDraft();
       setSelectedCell(firstEmpty(nextValues));
       setResult(null);
       setStepIndex(0);
@@ -449,8 +508,7 @@ export default function SudokuApp() {
     setValues([...EMPTY_VALUES]);
     setNotes([...EMPTY_NOTES]);
     setCages([]);
-    setSelectedCageCells(new Set());
-    setCageSumInput("");
+    clearCageDraft();
     setSelectedCell(0);
     setResult(null);
     setStepIndex(0);
@@ -460,8 +518,7 @@ export default function SudokuApp() {
   const changePuzzleMode = (nextMode: PuzzleMode) => {
     setPuzzleMode(nextMode);
     setInputMode(nextMode === "killer" ? "cage" : "value");
-    setSelectedCageCells(new Set());
-    setCageSumInput("");
+    clearCageDraft();
     setSelectedCell(nextMode === "killer" ? null : firstEmpty(values));
     setExampleIndex(-1);
     setResult(null);
@@ -481,13 +538,35 @@ export default function SudokuApp() {
       ...current,
       { cells: selectedCageCellList, sum: cageDraft.sum! },
     ]);
-    setSelectedCageCells(new Set());
-    setCageSumInput("");
+    clearCageDraft();
     invalidateResult();
   };
 
-  const removeCage = (index: number) => {
-    setCages((current) => current.filter((_, cageIndex) => cageIndex !== index));
+  const updateCage = () => {
+    if (
+      editingCageIndex === null ||
+      !cageDraft.canSave ||
+      cageDraft.sum === undefined
+    ) {
+      return;
+    }
+    setCages((current) =>
+      current.map((cage, cageIndex) =>
+        cageIndex === editingCageIndex
+          ? { cells: selectedCageCellList, sum: cageDraft.sum! }
+          : cage,
+      ),
+    );
+    clearCageDraft();
+    invalidateResult();
+  };
+
+  const clearSelectedCage = () => {
+    if (editingCageIndex === null) return;
+    setCages((current) =>
+      current.filter((_, cageIndex) => cageIndex !== editingCageIndex),
+    );
+    clearCageDraft();
     invalidateResult();
   };
 
@@ -606,7 +685,7 @@ export default function SudokuApp() {
     });
     setValues(nextValues);
     setNotes([...EMPTY_NOTES]);
-    setSelectedCageCells(new Set());
+    clearCageDraft();
     setSelectedCell(firstEmpty(nextValues));
     setResult(null);
     setStepIndex(0);
@@ -667,9 +746,6 @@ export default function SudokuApp() {
                     ? `共 ${puzzleMode === "killer" ? KILLER_SUDOKU_EXAMPLES.length : SUDOKU_EXAMPLES.length} 题`
                     : `${exampleIndex + 1}/${puzzleMode === "killer" ? KILLER_SUDOKU_EXAMPLES.length : SUDOKU_EXAMPLES.length}`}
                 </small>
-              </button>
-              <button type="button" className="ghost" onClick={clearPuzzle}>
-                清空
               </button>
               <button
                 type="button"
@@ -752,21 +828,32 @@ export default function SudokuApp() {
                 ))}
               </div>
 
-              <button
-                type="button"
-                className="erase-button"
-                onClick={eraseSelected}
-                disabled={inputMode === "cage"}
-              >
-                擦除
-              </button>
+              <div className="input-actions">
+                <button
+                  type="button"
+                  className="erase-button"
+                  onClick={eraseSelected}
+                  disabled={inputMode === "cage"}
+                >
+                  擦除
+                </button>
+                <button
+                  type="button"
+                  className="clear-puzzle-button"
+                  onClick={clearPuzzle}
+                >
+                  清空题盘
+                </button>
+              </div>
             </div>
 
             {puzzleMode === "killer" && inputMode === "cage" ? (
               <>
                 <div className="cage-editor" aria-label="杀手笼设定">
                   <div className="cage-editor-copy">
-                    <h2>杀手笼设定</h2>
+                    <h2>
+                      {editingCageIndex === null ? "杀手笼设定" : "修改杀手笼"}
+                    </h2>
                     <p className={cageDraft.canSave ? "" : "invalid"}>
                       {cageDraft.message}
                     </p>
@@ -783,24 +870,46 @@ export default function SudokuApp() {
                       onChange={(event) => setCageSumInput(event.target.value)}
                       aria-label="杀手笼累加和"
                     />
-                    <button type="button" onClick={addCage} disabled={!cageDraft.canSave}>
-                      添加笼
-                    </button>
+                    {editingCageIndex === null ? (
+                      <button
+                        type="button"
+                        onClick={addCage}
+                        disabled={!cageDraft.canSave}
+                      >
+                        添加笼
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={updateCage}
+                          disabled={!cageDraft.canSave}
+                        >
+                          修改笼
+                        </button>
+                        <button
+                          type="button"
+                          className="cage-clear-button"
+                          onClick={clearSelectedCage}
+                        >
+                          清除
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
                 {cages.length ? (
                   <div className="cage-list" aria-label="已添加的杀手笼">
                     {cages.map((cage, index) => (
-                      <div className="cage-list-item" key={`${cage.sum}-${cage.cells.join("-")}`}>
+                      <button
+                        type="button"
+                        className={`cage-list-item ${editingCageIndex === index ? "selected" : ""}`}
+                        key={`${cage.sum}-${cage.cells.join("-")}`}
+                        onClick={() => selectCageForEditing(index)}
+                        aria-pressed={editingCageIndex === index}
+                      >
                         和 {cage.sum} · {cage.cells.length} 格
-                        <button
-                          type="button"
-                          onClick={() => removeCage(index)}
-                          aria-label={`移除和为 ${cage.sum} 的杀手笼`}
-                        >
-                          ×
-                        </button>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : null}
