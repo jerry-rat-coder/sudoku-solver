@@ -52,14 +52,21 @@ test("mobile OCR review keeps actions visible beside a scrollable editor", async
     new URL("../src/styles.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /\.ocr-dialog\s*\{[^}]*height:\s*100dvh/s);
+  const mobileCss = css.match(
+    /@media \(max-width: 700px\) \{([\s\S]*)\n\}\n\n@media \(prefers-reduced-motion/,
+  )?.[1];
+  assert.ok(mobileCss);
   assert.match(
-    css,
-    /\.ocr-review\s*\{[^}]*flex:\s*1[^}]*overflow-y:\s*auto/s,
+    mobileCss,
+    /\.ocr-dialog\s*\{[^}]*position:\s*relative[^}]*height:\s*100dvh/s,
   );
   assert.match(
-    css,
-    /\.ocr-dialog-footer\s*\{[^}]*flex:\s*0 0 auto/s,
+    mobileCss,
+    /\.ocr-review\s*\{[^}]*overflow-y:\s*auto[^}]*padding-bottom:\s*calc\([^)]*safe-area-inset-bottom[^)]*\)/s,
+  );
+  assert.match(
+    mobileCss,
+    /\.ocr-dialog-footer\s*\{[^}]*position:\s*absolute[^}]*right:\s*0[^}]*bottom:\s*0[^}]*left:\s*0/s,
   );
 });
 
