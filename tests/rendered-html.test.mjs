@@ -116,5 +116,9 @@ test("Killer cage sums use an auto-saving range control", async () => {
 
   assert.match(component, /className="cage-sum-slider"[\s\S]*type="range"/);
   assert.match(component, /切换输入模式或点击空白处时自动保存/);
+  assert.match(
+    component,
+    /event\.key === "Enter"[\s\S]*cageDraft\.canSave[\s\S]*finalizeCageDraft\(\)/,
+  );
   assert.doesNotMatch(component, />\s*添加笼\s*</);
 });

@@ -545,6 +545,23 @@ export default function SudokuApp() {
       const target = event.target as HTMLElement | null;
       const isRangeInput =
         target instanceof HTMLInputElement && target.type === "range";
+      const isCageShortcutTarget =
+        isRangeInput ||
+        !target ||
+        target === document.body ||
+        target.getAttribute("role") === "gridcell" ||
+        target.classList.contains("cage-list-item");
+      if (
+        !result &&
+        inputMode === "cage" &&
+        event.key === "Enter" &&
+        cageDraft.canSave &&
+        isCageShortcutTarget
+      ) {
+        event.preventDefault();
+        finalizeCageDraft();
+        return;
+      }
       if (
         !result &&
         inputMode === "cage" &&
@@ -604,8 +621,10 @@ export default function SudokuApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    cageDraft.canSave,
     changeStep,
     eraseSelected,
+    finalizeCageDraft,
     inputCageSumDigit,
     inputDigit,
     inputMode,
@@ -1005,7 +1024,7 @@ export default function SudokuApp() {
                       {editingCageIndex === null ? "新杀手笼" : "修改杀手笼"}
                     </strong>
                     <span>
-                      {selectedCageCellList.length} 格 · 滑动或直接键入和数
+                      {selectedCageCellList.length} 格 · 滑动或键入和数 · Enter 保存
                     </span>
                   </div>
                   <output aria-live="polite">{cageSumValue}</output>

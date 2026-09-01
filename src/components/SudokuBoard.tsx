@@ -204,6 +204,12 @@ export function SudokuBoard({
     );
     if (cell === null) return;
     event.preventDefault();
+    const eventTarget = event.target;
+    if (eventTarget instanceof Element) {
+      eventTarget
+        .closest<HTMLButtonElement>('button[role="gridcell"]')
+        ?.focus({ preventScroll: true });
+    }
     activePointerRef.current = event.pointerId;
     lastPointerPointRef.current = { x: event.clientX, y: event.clientY };
     lastDragCellRef.current = cell;
