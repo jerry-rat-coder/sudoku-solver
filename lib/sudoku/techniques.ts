@@ -11,6 +11,8 @@ import {
     countBits,
     describeUnit,
     digitInMask,
+    isKnightAdjacent,
+    knightPeersOf,
     maskToDigits,
     peersForVariant,
     toCellName,
@@ -96,7 +98,13 @@ function findNakedSingle(board: MutableBoard): SolveStep | null {
             placed: { cell, digit },
             links: [],
             explanation: {
-                premise: `${toCellName(cell)} 的同行、同列和同宫${board.variant === 'x' ? '以及同对角线' : ''}已经排除了其余数字。`,
+                premise: `${toCellName(cell)} 的同行、同列和同宫${
+                    board.variant === 'x'
+                        ? '以及同对角线'
+                        : board.variant === 'antiknight'
+                          ? '以及马步互见的位置'
+                          : ''
+                }已经排除了其余数字。`,
                 reasoning: `这个单元格只剩候选数 ${digit}。`,
                 conclusion: `确定 ${toCellName(cell)} = ${digit}。`,
             },
@@ -420,6 +428,166 @@ export function findDiagonalRectangle(board: MutableBoard): SolveStep | null {
                     },
                 })
             }
+        }
+    }
+    return null
+}
+
+/**
+ * 无马专属的单位指向/认领共用实现：
+ * 单位内某候选全部与目标格马步互见，则目标格不能填该候选。
+ * 宫发起的叫马步指向，行/列发起的叫马步认领。
+ */
+function findKnightUnitPointing(
+    board: MutableBoard,
+    units: readonly Unit[],
+    techniqueId: TechniqueId,
+    unitNoun: string,
+): SolveStep | null {
+    if (board.variant !== 'antiknight') return null
+    for (const unit of units) {
+        for (const digit of DIGITS) {
+            const cells = unit.cells.filter(
+                (cell) =>
+                    board.values[cell] === 0 &&
+                    digitInMask(board.candidates[cell], digit),
+            )
+            // |S| = 1 时隐性唯一数会先行落子并自动传播，不在此重复。
+            if (cells.length < 2) continue
+
+            const targets = uniqueNumbers(
+                cells.flatMap((cell) => [...knightPeersOf(cell)]),
+            ).filter(
+                (target) =>
+                    !unit.cells.includes(target) &&
+                    board.values[target] === 0 &&
+                    digitInMask(board.candidates[target], digit) &&
+                    cells.every((cell) => isKnightAdjacent(cell, target)),
+            )
+            if (targets.length === 0) continue
+
+            const removed = targets.map((cell) => ({ cell, digit }))
+            const links: ChainLink[] = cells.flatMap((cell) =>
+                targets.map((target) => ({
+                    from: { cell, digit },
+                    to: { cell: target, digit },
+                    type: 'weak' as const,
+                })),
+            )
+            return stepFor(currentDefinition(techniqueId), {
+                id: `${techniqueId}-${unit.kind}-${unit.index}-${digit}-${targets.join('-')}`,
+                action: 'eliminate',
+                unit: unitRef(unit),
+                digit,
+                digits: [digit],
+                cells,
+                focusCells: targets,
+                relatedCells: uniqueNumbers([
+                    ...unit.cells,
+                    ...cells,
+                    ...targets,
+                ]),
+                evidence: cells.map((cell) => ({ cell, digit })),
+                removed,
+                links,
+                explanation: {
+                    premise: `${unitNoun}内候选数 ${digit} 全部落在 ${cells.map(toCellName).join('、')}，它们与 ${targets.map(toCellName).join('、')} 都是马步互见。`,
+                    reasoning: `${unitNoun}内必须填入一个 ${digit}，无论落在哪一格，它都与目标格马步互见；而无马规则禁止马步互见的两格同数。`,
+                    conclusion: `因此目标格不能填 ${digit}，从 ${targets.map(toCellName).join('、')} 删除候选数 ${digit}。`,
+                },
+            })
+        }
+    }
+    return null
+}
+
+/**
+ * 马步指向（Anti-Knight Pointing）：
+ * 宫内某候选全部与同一格马步互见，则该格可删除此候选。
+ */
+export function findKnightPointing(board: MutableBoard): SolveStep | null {
+    return findKnightUnitPointing(board, BOXES, 'knight-pointing', '宫')
+}
+
+/**
+ * 马步认领（Anti-Knight Claiming）：
+ * 行/列内某候选全部与同一格马步互见，则该格可删除此候选。
+ */
+export function findKnightClaiming(board: MutableBoard): SolveStep | null {
+    return findKnightUnitPointing(
+        board,
+        [...ROWS, ...COLUMNS],
+        'knight-claiming',
+        '行或列',
+    )
+}
+
+/**
+ * 马步数对（Anti-Knight Pair）：
+ * 两格马步互见且候选恰好同为一对数字，
+ * 则同时与两格互见的格子可删除这对候选。
+ * （马步图是二部图，不存在两两马步互见的三格，故无马步三数组。）
+ */
+export function findKnightPair(board: MutableBoard): SolveStep | null {
+    if (board.variant !== 'antiknight') return null
+    for (let left = 0; left < 81; left += 1) {
+        if (
+            board.values[left] !== 0 ||
+            countBits(board.candidates[left]) !== 2
+        ) {
+            continue
+        }
+        for (const right of knightPeersOf(left)) {
+            if (right <= left) continue
+            if (
+                board.values[right] !== 0 ||
+                board.candidates[right] !== board.candidates[left]
+            ) {
+                continue
+            }
+            const digits = maskToDigits(board.candidates[left])
+            const targets = commonPeers([left, right], board.variant).filter(
+                (cell) =>
+                    board.values[cell] === 0 &&
+                    (board.candidates[cell] & board.candidates[left]) !== 0,
+            )
+            if (targets.length === 0) continue
+
+            const removed = targets.flatMap((cell) =>
+                maskToDigits(board.candidates[cell] & board.candidates[left]).map(
+                    (digit) => ({ cell, digit }),
+                ),
+            )
+            const links: ChainLink[] = [
+                ...digits.map((digit) => ({
+                    from: { cell: left, digit },
+                    to: { cell: right, digit },
+                    type: 'weak' as const,
+                })),
+                ...removed.flatMap(({ cell, digit }) =>
+                    [left, right].map((peer) => ({
+                        from: { cell: peer, digit },
+                        to: { cell, digit },
+                        type: 'weak' as const,
+                    })),
+                ),
+            ]
+            return stepFor(currentDefinition('knight-pair'), {
+                id: `knight-pair-${left}-${right}-${digits.join('-')}`,
+                action: 'eliminate',
+                digits,
+                cells: [left, right],
+                focusCells: [left, right],
+                relatedCells: uniqueNumbers([left, right, ...targets]),
+                evidence: refsForCells(board, [left, right]),
+                removed,
+                links,
+                explanation: {
+                    premise: `${toCellName(left)} 与 ${toCellName(right)} 马步互见，且两格的候选都恰好是 ${digits.join('、')}。`,
+                    reasoning: `马步互见的两格不能同数，因此这两个数字必须分别占据这两格（一格填 ${digits[0]}，另一格填 ${digits[1]}）。`,
+                    conclusion: `同时与这两格互见的 ${targets.map(toCellName).join('、')} 不能再填这两个数字，删除相应候选。`,
+                },
+            })
         }
     }
     return null
@@ -1427,6 +1595,28 @@ const TECHNIQUES: RegisteredTechnique[] = [
     ),
     define(
         {
+            id: 'knight-pointing',
+            label: '马步指向',
+            weight: 35,
+            category: 'antiknight',
+            description:
+                '宫内某候选全部与同一格马步互见，可从该格删除此候选。',
+        },
+        findKnightPointing,
+    ),
+    define(
+        {
+            id: 'knight-claiming',
+            label: '马步认领',
+            weight: 36,
+            category: 'antiknight',
+            description:
+                '行或列内某候选全部与同一格马步互见，可从该格删除此候选。',
+        },
+        findKnightClaiming,
+    ),
+    define(
+        {
             id: 'naked-pair',
             label: '裸数对',
             weight: 40,
@@ -1434,6 +1624,17 @@ const TECHNIQUES: RegisteredTechnique[] = [
             description: '两个单元格的候选并集恰好包含两个数字。',
         },
         (board) => findNakedSubset(board, 2, 'naked-pair'),
+    ),
+    define(
+        {
+            id: 'knight-pair',
+            label: '马步数对',
+            weight: 42,
+            category: 'antiknight',
+            description:
+                '两格马步互见且共享同一对候选，可从共同互见格删除这对候选。',
+        },
+        findKnightPair,
     ),
     define(
         {

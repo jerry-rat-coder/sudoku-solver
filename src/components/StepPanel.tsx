@@ -64,7 +64,11 @@ function StepExplanation({
                 <p>
                     观察 <CellToken cell={targetCell} onFocus={onFocusCell} />
                     ，它的同行、同列和同宫
-                    {step.variant === 'x' ? '以及同对角线' : ''}
+                    {step.variant === 'x'
+                        ? '以及同对角线'
+                        : step.variant === 'antiknight'
+                          ? '以及马步互见的位置'
+                          : ''}
                     已经排除了其他数字。
                 </p>
                 <p>
@@ -209,6 +213,80 @@ function StepExplanation({
         )
     }
 
+    if (step.technique === 'knight-pointing') {
+        const boxIndex =
+            Math.floor(Math.floor(step.cells[0] / 9) / 3) * 3 +
+            Math.floor((step.cells[0] % 9) / 3)
+        return (
+            <>
+                <p>
+                    在{' '}
+                    <strong>
+                        {describeUnit({ kind: 'box', index: boxIndex })}
+                    </strong>
+                    中，候选数 <strong>{step.digit}</strong> 只出现在{' '}
+                    {joinCells(step.cells, onFocusCell)}。
+                </p>
+                <p>
+                    这些位置全部与{' '}
+                    {joinCells(removedCells, onFocusCell)}{' '}
+                    马步互见。宫内必须填入一个 {step.digit}
+                    ，但无马数独规定马步互见的两格不能同数，
+                    因此无论 {step.digit} 落在其中哪一格，目标格都会与它冲突。
+                </p>
+                <p className="conclusion">
+                    从 {joinCells(removedCells, onFocusCell)} 删除候选数{' '}
+                    <strong>{step.digit}</strong>。
+                </p>
+            </>
+        )
+    }
+
+    if (step.technique === 'knight-claiming') {
+        return (
+            <>
+                <p>
+                    在 <strong>{describeUnit(step.unit)}</strong> 中，候选数{' '}
+                    <strong>{step.digit}</strong> 只出现在{' '}
+                    {joinCells(step.cells, onFocusCell)}。
+                </p>
+                <p>
+                    这些位置全部与{' '}
+                    {joinCells(removedCells, onFocusCell)}{' '}
+                    马步互见。这个单位必须填入一个 {step.digit}
+                    ，但无马数独规定马步互见的两格不能同数，
+                    因此无论 {step.digit} 落在其中哪一格，目标格都会与它冲突。
+                </p>
+                <p className="conclusion">
+                    从 {joinCells(removedCells, onFocusCell)} 删除候选数{' '}
+                    <strong>{step.digit}</strong>。
+                </p>
+            </>
+        )
+    }
+
+    if (step.technique === 'knight-pair') {
+        return (
+            <>
+                <p>
+                    {joinCells(step.cells, onFocusCell)}{' '}
+                    是马步互见的两格，且候选都恰好是{' '}
+                    <strong>{digits}</strong>。
+                </p>
+                <p>
+                    无马数独规定马步互见的两格不能同数，
+                    所以这两个数字必须分别占据这两格（一格填 {step.digits[0]}，
+                    另一格填 {step.digits[1]}）。
+                </p>
+                <p className="conclusion">
+                    同时与这两格互见的{' '}
+                    {joinCells(removedCells, onFocusCell)}{' '}
+                    不能再填 {digits}，删除相应候选。
+                </p>
+            </>
+        )
+    }
+
     return (
         <>
             <p>{step.explanation.premise}</p>
@@ -233,6 +311,7 @@ const CATEGORY_LABELS: Record<TechniqueCategory, string> = {
     chain: '强弱链',
     forcing: '链式反证',
     diagonal: '对角线技巧',
+    antiknight: '无马技巧',
     killer: '杀手笼约束',
 }
 
@@ -367,6 +446,7 @@ export function StepPanel({ result, stepIndex, onFocusCell }: StepPanelProps) {
                             <span>翼形</span>
                             <span>AIC 强弱链</span>
                             <span>对角线技巧</span>
+                            <span>无马技巧</span>
                             <span>西尾链</span>
                             <span>强制网</span>
                         </div>

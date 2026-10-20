@@ -34,6 +34,7 @@ import {
     type KillerCage,
 } from '@/lib/sudoku/killer'
 import {
+    ANTIKNIGHT_EXAMPLES,
     KILLER_SUDOKU_EXAMPLES,
     parsePuzzle,
     SUDOKU_EXAMPLES,
@@ -41,12 +42,13 @@ import {
 } from '@/lib/sudoku/examples'
 
 type InputMode = 'value' | 'candidate' | 'cage'
-type PuzzleMode = 'classic' | 'killer' | 'x'
+type PuzzleMode = 'classic' | 'killer' | 'x' | 'antiknight'
 
 const PUZZLE_MODE_LABELS: Record<PuzzleMode, string> = {
     classic: '经典数独',
     killer: '杀手数独',
     x: '对角线数独',
+    antiknight: '无马数独',
 }
 
 function examplesForMode(mode: PuzzleMode) {
@@ -54,7 +56,17 @@ function examplesForMode(mode: PuzzleMode) {
         ? KILLER_SUDOKU_EXAMPLES
         : mode === 'x'
           ? X_SUDOKU_EXAMPLES
-          : SUDOKU_EXAMPLES
+          : mode === 'antiknight'
+            ? ANTIKNIGHT_EXAMPLES
+            : SUDOKU_EXAMPLES
+}
+
+function variantForMode(mode: PuzzleMode) {
+    return mode === 'x'
+        ? ('x' as const)
+        : mode === 'antiknight'
+          ? ('antiknight' as const)
+          : ('classic' as const)
 }
 
 interface OcrDialogState {
@@ -74,6 +86,7 @@ const INITIAL_OCR_PROGRESS: OcrProgress = {
     message: '准备读取图片',
 }
 const OCR_PROGRESS_STALL_MS = 30_000
+const DOUBLE_CLICK_MS = 400
 
 function firstEmpty(values: readonly number[]) {
     const index = values.findIndex((value) => value === 0)
@@ -109,10 +122,18 @@ function BoardFooter({
                         <i className="legend-diagonal" /> 对角线
                     </span>
                 ) : null}
-                {puzzleMode === 'killer' ? (
+                {puzzleMode === 'antiknight' ? (
                     <span>
-                        <i className="legend-cage" /> 杀手笼
+                        <i className="legend-knight" /> 马步互见
                     </span>
+                ) : null}
+                {puzzleMode === 'killer' ? (
+                    <>
+                        <span>
+                            <i className="legend-cage" /> 杀手笼
+                        </span>
+                        <span>双击格子可填数字</span>
+                    </>
                 ) : null}
             </div>
             <p>
@@ -156,16 +177,14 @@ export default function SudokuApp() {
     const ocrImageUrlRef = useRef<string | null>(null)
     const preserveCageSumRef = useRef(false)
     const cageKeyboardInputRef = useRef({ digits: '', timestamp: 0 })
+    const lastCageClickRef = useRef<{ cell: number; time: number } | null>(null)
 
     const givens = useMemo(() => values.map((value) => value !== 0), [values])
     const conflicts = useMemo(
         () =>
             puzzleMode === 'killer'
                 ? killerConflictCellsForValues(values, cages)
-                : conflictCellsForValues(
-                      values,
-                      puzzleMode === 'x' ? 'x' : 'classic',
-                  ),
+                : conflictCellsForValues(values, variantForMode(puzzleMode)),
         [cages, puzzleMode, values],
     )
     const displaySnapshot = result?.snapshots[stepIndex]
@@ -426,6 +445,22 @@ export default function SudokuApp() {
 
     const handleCageSelectStart = useCallback(
         (cell: number) => {
+            const now = Date.now()
+            const previousClick = lastCageClickRef.current
+            const isDoubleClick =
+                previousClick !== null &&
+                previousClick.cell === cell &&
+                now - previousClick.time <= DOUBLE_CLICK_MS
+            lastCageClickRef.current = isDoubleClick
+                ? null
+                : { cell, time: now }
+            if (isDoubleClick) {
+                // 双击同一格：退出画笼编辑，切换到「填数字」模式并选中该格
+                finalizeCageDraft()
+                setInputMode('value')
+                setSelectedCell(cell)
+                return
+            }
             const occupiedCageIndex = cages.findIndex((cage) =>
                 cage.cells.includes(cell),
             )
@@ -476,6 +511,7 @@ export default function SudokuApp() {
 
     const handleCageSelectExtend = useCallback(
         (cell: number) => {
+            lastCageClickRef.current = null
             const occupiedCageIndex = cages.findIndex((cage) =>
                 cage.cells.includes(cell),
             )
@@ -728,7 +764,9 @@ export default function SudokuApp() {
                 ? '空白杀手数独'
                 : puzzleMode === 'x'
                   ? '空白对角线数独'
-                  : '空白题目',
+                  : puzzleMode === 'antiknight'
+                    ? '空白无马数独'
+                    : '空白题目',
         )
     }
 
@@ -751,7 +789,9 @@ export default function SudokuApp() {
                   ? '空白杀手数独'
                   : nextMode === 'x'
                     ? '空白对角线数独'
-                    : '空白题目',
+                    : nextMode === 'antiknight'
+                      ? '空白无马数独'
+                      : '空白题目',
         )
     }
 
@@ -771,7 +811,7 @@ export default function SudokuApp() {
         const options = {
             candidatePolicy: hasCandidateRestrictions ? 'respect' : 'recompute',
             candidates: notes,
-            variant: puzzleMode === 'x' ? ('x' as const) : ('classic' as const),
+            variant: variantForMode(puzzleMode),
         } as const
         const nextResult =
             puzzleMode === 'killer'
@@ -942,6 +982,7 @@ export default function SudokuApp() {
                                 >
                                     <option value="classic">经典数独</option>
                                     <option value="x">对角线数独</option>
+                                    <option value="antiknight">无马数独</option>
                                     <option value="killer">杀手数独</option>
                                 </select>
                             </label>
@@ -1121,6 +1162,7 @@ export default function SudokuApp() {
                                 puzzleMode === 'killer' && inputMode === 'cage'
                             }
                             showDiagonals={puzzleMode === 'x'}
+                            showKnightPeers={puzzleMode === 'antiknight'}
                             onCageSelectStart={handleCageSelectStart}
                             onCageSelectExtend={handleCageSelectExtend}
                             onSelect={setSelectedCell}
@@ -1139,12 +1181,21 @@ export default function SudokuApp() {
                                         </strong>
                                         <span>
                                             {selectedCageCellList.length} 格 ·
-                                            滑动或键入和数 · Enter 保存
+                                            滑动或键入和数 · 填入或 Enter 保存
                                         </span>
                                     </div>
                                     <output aria-live="polite">
                                         {cageSumValue}
                                     </output>
+                                    <button
+                                        type="button"
+                                        className="cage-fill-button"
+                                        onClick={finalizeCageDraft}
+                                        disabled={!cageDraft.canSave}
+                                        aria-label="填入杀手笼"
+                                    >
+                                        填入
+                                    </button>
                                     {editingCageIndex !== null ? (
                                         <button
                                             type="button"
@@ -1186,7 +1237,7 @@ export default function SudokuApp() {
                                     }
                                 >
                                     {cageDraft.canSave
-                                        ? '选择其他笼、切换输入模式或点击空白处时自动保存。'
+                                        ? '点击填入按钮保存；选择其他笼、切换输入模式或点击空白处时自动保存。'
                                         : cageDraft.message}
                                 </p>
                             </div>
@@ -1213,6 +1264,7 @@ export default function SudokuApp() {
                             currentStep={currentStep}
                             cages={puzzleMode === 'killer' ? cages : []}
                             showDiagonals={puzzleMode === 'x'}
+                            showKnightPeers={puzzleMode === 'antiknight'}
                             onSelect={setSelectedCell}
                         />
                         <StepPlayer

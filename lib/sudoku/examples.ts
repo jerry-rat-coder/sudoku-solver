@@ -71,6 +71,40 @@ export const X_SUDOKU_EXAMPLES: readonly XSudokuExample[] = [
     },
 ]
 
+export interface AntiKnightExample {
+    name: string
+    difficulty: string
+    puzzle: string
+}
+
+/**
+ * 无马数独（Anti-Knight）示例：在经典规则上要求马步互见的两格不能同数。
+ * 题目由 scripts/gen-antiknight-examples.mjs 生成（无马规则下唯一解），
+ * 每题的求解过程都会用到无马专属技巧：马步指向、马步认领、马步数对。
+ */
+export const ANTIKNIGHT_EXAMPLES: readonly AntiKnightExample[] = [
+    {
+        name: '无马热身',
+        difficulty: '入门',
+        puzzle: '050000000000600003400500200000400920007000800040098005000100000072000104000002500',
+    },
+    {
+        name: '马步指向练习',
+        difficulty: '进阶',
+        puzzle: '000200000902608000078010600009000000000000000010030206000302000293000057000500000',
+    },
+    {
+        name: '马步数对练习',
+        difficulty: '进阶',
+        puzzle: '200710000400006200000000000000000040000000603600005080062400010004260050000001060',
+    },
+    {
+        name: '无马综合挑战',
+        difficulty: '大师',
+        puzzle: '600001504439005100010000320000000060000260700004007080000000800000000000000002600',
+    },
+]
+
 const KILLER_SAMPLE_SOLUTION =
     '162857493534129678789643521475312986913586742628794135356478219241935867897261354'
 

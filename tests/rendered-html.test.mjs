@@ -125,7 +125,21 @@ test("Killer cage sums use an auto-saving range control", async () => {
   assert.match(component, /切换输入模式或点击空白处时自动保存/);
   assert.match(
     component,
-    /event\.key === "Enter"[\s\S]*cageDraft\.canSave[\s\S]*finalizeCageDraft\(\)/,
+    /event\.key === ['"]Enter['"][\s\S]*cageDraft\.canSave[\s\S]*finalizeCageDraft\(\)/,
   );
   assert.doesNotMatch(component, />\s*添加笼\s*</);
+});
+
+test("Killer cage double-click switches a cell to digit input", async () => {
+  const component = await readFile(
+    new URL("../src/components/SudokuApp.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(component, /lastCageClickRef/);
+  assert.match(
+    component,
+    /isDoubleClick[\s\S]{0,320}setInputMode\(['"]value['"]\)[\s\S]{0,120}setSelectedCell\(cell\)/,
+  );
+  assert.match(component, /双击格子可填数字/);
 });

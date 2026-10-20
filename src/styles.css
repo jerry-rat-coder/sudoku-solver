@@ -278,7 +278,7 @@ select:focus-visible {
 }
 
 .entry-workspace {
-    grid-template-columns: minmax(0, 780px);
+    grid-template-columns: minmax(0, 900px);
     justify-content: center;
 }
 
@@ -447,6 +447,31 @@ select:focus-visible {
 
 .cage-clear-button:hover {
     background: var(--danger-soft);
+}
+
+.cage-fill-button {
+    min-height: 32px;
+    padding: 0 13px;
+    border: 1px solid var(--jade);
+    border-radius: 6px;
+    color: #fff;
+    background: var(--jade);
+    cursor: pointer;
+    font-size: 0.74rem;
+    font-weight: 700;
+    transition:
+        background 120ms ease-out,
+        border-color 120ms ease-out;
+}
+
+.cage-fill-button:hover:not(:disabled) {
+    border-color: var(--jade-deep);
+    background: var(--jade-deep);
+}
+
+.cage-fill-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.46;
 }
 
 .cage-sum-slider-row {
@@ -1028,6 +1053,10 @@ select:focus-visible {
 
 .legend-diagonal {
     background: rgb(104 112 105 / 30%);
+}
+
+.legend-knight {
+    background: rgb(221 235 226 / 34%);
 }
 
 .diagonal-overlay {

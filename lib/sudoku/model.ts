@@ -2,7 +2,7 @@ export const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const
 
 export type Digit = (typeof DIGITS)[number]
 export type UnitKind = 'row' | 'column' | 'box' | 'diagonal'
-export type PuzzleVariant = 'classic' | 'x'
+export type PuzzleVariant = 'classic' | 'x' | 'antiknight'
 export type TechniqueCategory =
     | 'basic'
     | 'intersection'
@@ -12,6 +12,7 @@ export type TechniqueCategory =
     | 'chain'
     | 'forcing'
     | 'diagonal'
+    | 'antiknight'
     | 'killer'
 
 export type TechniqueId =
@@ -22,6 +23,9 @@ export type TechniqueId =
     | 'diagonal-pointing'
     | 'diagonal-claiming'
     | 'diagonal-rectangle'
+    | 'knight-pointing'
+    | 'knight-claiming'
+    | 'knight-pair'
     | 'naked-pair'
     | 'hidden-pair'
     | 'naked-triple'
@@ -226,10 +230,47 @@ function buildPeers(cellUnits: readonly (readonly Unit[])[]) {
     )
 }
 
+/** 马步（象棋日字）的 8 个偏移：行差 2 列差 1，或行差 1 列差 2。 */
+export const KNIGHT_MOVE_OFFSETS: readonly (readonly [number, number])[] = [
+    [-2, -1],
+    [-2, 1],
+    [-1, -2],
+    [-1, 2],
+    [1, -2],
+    [1, 2],
+    [2, -1],
+    [2, 1],
+]
+
+/** 单元格的马步互见格（最多 8 个），按升序排列。 */
+export function knightPeersOf(cell: number): readonly number[] {
+    const row = Math.floor(cell / 9)
+    const column = cell % 9
+    return KNIGHT_MOVE_OFFSETS.flatMap(([rowOffset, columnOffset]) => {
+        const nextRow = row + rowOffset
+        const nextColumn = column + columnOffset
+        return nextRow >= 0 && nextRow < 9 && nextColumn >= 0 && nextColumn < 9
+            ? [nextRow * 9 + nextColumn]
+            : []
+    }).sort((left, right) => left - right)
+}
+
+/** 两个单元格是否构成马步互见。 */
+export function isKnightAdjacent(left: number, right: number) {
+    return knightPeersOf(left).includes(right)
+}
+
 const CLASSIC_CELL_UNITS = buildCellUnits(CLASSIC_UNITS)
 const X_CELL_UNITS = buildCellUnits(X_UNITS)
 const CLASSIC_PEERS = buildPeers(CLASSIC_CELL_UNITS)
 const X_PEERS = buildPeers(X_CELL_UNITS)
+const ANTINIGHT_PEERS: readonly (readonly number[])[] = Array.from(
+    { length: 81 },
+    (_, cell) =>
+        [...new Set([...CLASSIC_PEERS[cell], ...knightPeersOf(cell)])].sort(
+            (left, right) => left - right,
+        ),
+)
 
 export const UNITS: readonly Unit[] = CLASSIC_UNITS
 
@@ -246,7 +287,9 @@ export function cellUnitsForVariant(variant: PuzzleVariant = 'classic') {
 }
 
 export function peersForVariant(variant: PuzzleVariant = 'classic') {
-    return variant === 'x' ? X_PEERS : CLASSIC_PEERS
+    if (variant === 'x') return X_PEERS
+    if (variant === 'antiknight') return ANTINIGHT_PEERS
+    return CLASSIC_PEERS
 }
 
 export function boardUnits(board: Pick<MutableBoard, 'variant'>) {
@@ -354,6 +397,19 @@ export function conflictCellsForValues(
             if (cells.length > 1) cells.forEach((cell) => conflicts.add(cell))
         }
     }
+    // 无马规则：马步互见的两格不能同数（单位扫描不覆盖马步对）。
+    if (variant === 'antiknight') {
+        for (let cell = 0; cell < 81; cell += 1) {
+            const value = input[cell] ?? 0
+            if (!value) continue
+            for (const peer of knightPeersOf(cell)) {
+                if ((input[peer] ?? 0) === value) {
+                    conflicts.add(cell)
+                    conflicts.add(peer)
+                }
+            }
+        }
+    }
     return conflicts
 }
 
@@ -385,7 +441,9 @@ export function validateBoard(
             message:
                 board.variant === 'x'
                     ? '盘面中存在同行、同列、同宫或同对角线的重复数字。'
-                    : '盘面中存在同行、同列或同宫的重复数字。',
+                    : board.variant === 'antiknight'
+                      ? '盘面中存在同行、同列、同宫或马步互见的重复数字。'
+                      : '盘面中存在同行、同列或同宫的重复数字。',
             cells: [...conflicts].sort((left, right) => left - right),
         })
     }

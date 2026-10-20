@@ -2,6 +2,7 @@ import { useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import {
     DIGITS,
     digitInMask,
+    isKnightAdjacent,
     type CandidateRef,
     type SolveStep,
 } from '@/lib/sudoku/engine'
@@ -18,6 +19,7 @@ interface SudokuBoardProps {
     cageSelection?: ReadonlySet<number>
     cageSelectionMode?: boolean
     showDiagonals?: boolean
+    showKnightPeers?: boolean
     onCageSelectStart?: (cell: number) => void
     onCageSelectExtend?: (cell: number) => void
     onSelect: (cell: number) => void
@@ -32,6 +34,7 @@ function isSelectionPeer(
     cell: number,
     selectedCell: number | null,
     showDiagonals: boolean,
+    showKnightPeers: boolean,
 ) {
     if (selectedCell === null || cell === selectedCell) return false
     const row = Math.floor(cell / 9)
@@ -48,6 +51,7 @@ function isSelectionPeer(
     ) {
         return true
     }
+    if (showKnightPeers && isKnightAdjacent(selectedCell, cell)) return true
     if (!showDiagonals) return false
     const sameMainDiagonal = row === column && selectedRow === selectedColumn
     const sameAntiDiagonal =
@@ -107,6 +111,7 @@ export function SudokuBoard({
     cageSelection = new Set(),
     cageSelectionMode = false,
     showDiagonals = false,
+    showKnightPeers = false,
     onCageSelectStart,
     onCageSelectExtend,
     onSelect,
@@ -282,7 +287,12 @@ export function SudokuBoard({
                             ? 'box-edge-right'
                             : '',
                         row % 3 === 2 && row !== 8 ? 'box-edge-bottom' : '',
-                        isSelectionPeer(cell, selectedCell, showDiagonals)
+                        isSelectionPeer(
+                            cell,
+                            selectedCell,
+                            showDiagonals,
+                            showKnightPeers,
+                        )
                             ? 'selection-peer'
                             : '',
                         relatedCells.has(cell) ? 'step-related' : '',
