@@ -228,11 +228,10 @@ function StepExplanation({
                     {joinCells(step.cells, onFocusCell)}。
                 </p>
                 <p>
-                    这些位置全部与{' '}
-                    {joinCells(removedCells, onFocusCell)}{' '}
+                    这些位置全部与 {joinCells(removedCells, onFocusCell)}{' '}
                     马步互见。宫内必须填入一个 {step.digit}
-                    ，但无马数独规定马步互见的两格不能同数，
-                    因此无论 {step.digit} 落在其中哪一格，目标格都会与它冲突。
+                    ，但无马数独规定马步互见的两格不能同数， 因此无论{' '}
+                    {step.digit} 落在其中哪一格，目标格都会与它冲突。
                 </p>
                 <p className="conclusion">
                     从 {joinCells(removedCells, onFocusCell)} 删除候选数{' '}
@@ -251,11 +250,10 @@ function StepExplanation({
                     {joinCells(step.cells, onFocusCell)}。
                 </p>
                 <p>
-                    这些位置全部与{' '}
-                    {joinCells(removedCells, onFocusCell)}{' '}
+                    这些位置全部与 {joinCells(removedCells, onFocusCell)}{' '}
                     马步互见。这个单位必须填入一个 {step.digit}
-                    ，但无马数独规定马步互见的两格不能同数，
-                    因此无论 {step.digit} 落在其中哪一格，目标格都会与它冲突。
+                    ，但无马数独规定马步互见的两格不能同数， 因此无论{' '}
+                    {step.digit} 落在其中哪一格，目标格都会与它冲突。
                 </p>
                 <p className="conclusion">
                     从 {joinCells(removedCells, onFocusCell)} 删除候选数{' '}
@@ -270,8 +268,7 @@ function StepExplanation({
             <>
                 <p>
                     {joinCells(step.cells, onFocusCell)}{' '}
-                    是马步互见的两格，且候选都恰好是{' '}
-                    <strong>{digits}</strong>。
+                    是马步互见的两格，且候选都恰好是 <strong>{digits}</strong>。
                 </p>
                 <p>
                     无马数独规定马步互见的两格不能同数，
@@ -279,8 +276,7 @@ function StepExplanation({
                     另一格填 {step.digits[1]}）。
                 </p>
                 <p className="conclusion">
-                    同时与这两格互见的{' '}
-                    {joinCells(removedCells, onFocusCell)}{' '}
+                    同时与这两格互见的 {joinCells(removedCells, onFocusCell)}{' '}
                     不能再填 {digits}，删除相应候选。
                 </p>
             </>

@@ -101,7 +101,11 @@ test('无马变体扩展互见而不增加单位', () => {
     assert.ok(knightPeers[9].includes(28))
     // 无马互见是经典互见的严格超集。
     for (let cell = 0; cell < 81; cell += 1) {
-        assert.ok(classicPeers[cell].every((peer) => knightPeers[cell].includes(peer)))
+        assert.ok(
+            classicPeers[cell].every((peer) =>
+                knightPeers[cell].includes(peer),
+            ),
+        )
     }
     assert.ok(knightPeers[9].length > classicPeers[9].length)
 })
@@ -179,7 +183,10 @@ test('马步指向：宫内落点全部马步攻击目标格时删除目标候�
     assert.equal(step.action, 'eliminate')
     assert.equal(step.unit.kind, 'box')
     assert.equal(step.unit.index, 0)
-    assert.deepEqual([...step.cells].sort((a, b) => a - b), [10, 18])
+    assert.deepEqual(
+        [...step.cells].sort((a, b) => a - b),
+        [10, 18],
+    )
     assert.deepEqual(step.removed, [{ cell: 29, digit: 3 }])
     assert.deepEqual(step.focusCells, [29])
     assert.ok(step.relatedCells.includes(10) && step.relatedCells.includes(29))
@@ -189,9 +196,7 @@ test('马步指向：宫内落点全部马步攻击目标格时删除目标候�
     assert.equal(step.links.length, 2)
     assert.ok(step.links.every((link) => link.type === 'weak'))
     assert.ok(
-        step.links.every(
-            (link) => link.to.cell === 29 && link.to.digit === 3,
-        ),
+        step.links.every((link) => link.to.cell === 29 && link.to.digit === 3),
     )
 })
 
@@ -210,7 +215,10 @@ test('马步认领：行内落点全部马步攻击目标格时删除目标候�
     assert.equal(step.technique, 'knight-claiming')
     assert.equal(step.unit.kind, 'row')
     assert.equal(step.unit.index, 0)
-    assert.deepEqual([...step.cells].sort((a, b) => a - b), [1, 3])
+    assert.deepEqual(
+        [...step.cells].sort((a, b) => a - b),
+        [1, 3],
+    )
     assert.deepEqual(step.removed, [{ cell: 20, digit: 7 }])
     assert.ok(step.explanation.premise.includes('马步互见'))
     assert.ok(step.explanation.conclusion.includes('删除候选数'))
@@ -228,8 +236,14 @@ test('马步数对：两格同候选且马步互见时删除共同互见格', ()
     assert.ok(step)
     assert.equal(step.technique, 'knight-pair')
     assert.equal(step.action, 'eliminate')
-    assert.deepEqual([...step.cells].sort((a, b) => a - b), [9, 28])
-    assert.deepEqual([...step.digits].sort((a, b) => a - b), [4, 6])
+    assert.deepEqual(
+        [...step.cells].sort((a, b) => a - b),
+        [9, 28],
+    )
+    assert.deepEqual(
+        [...step.digits].sort((a, b) => a - b),
+        [4, 6],
+    )
     assert.deepEqual(step.focusCells, [9, 28])
 
     // 消除目标：同时与两格互见的格子（如 R2C2(10)、R4C1(27)）。
@@ -320,7 +334,9 @@ test('所有无马示例可求解且步骤可解释、可回放', () => {
         const finalValues = result.snapshots.at(-1).values
         for (const unit of unitsForVariant('antiknight')) {
             assert.deepEqual(
-                unit.cells.map((cell) => finalValues[cell]).sort((a, b) => a - b),
+                unit.cells
+                    .map((cell) => finalValues[cell])
+                    .sort((a, b) => a - b),
                 [1, 2, 3, 4, 5, 6, 7, 8, 9],
                 `${example.name} ${unit.kind}${unit.index}`,
             )
@@ -338,7 +354,10 @@ test('所有无马示例可求解且步骤可解释、可回放', () => {
 })
 
 test('瀑布调度逐位重放一致（无马盘面）', () => {
-    for (const example of [ANTIKNIGHT_EXAMPLES[0], ANTIKNIGHT_EXAMPLES.at(-1)]) {
+    for (const example of [
+        ANTIKNIGHT_EXAMPLES[0],
+        ANTIKNIGHT_EXAMPLES.at(-1),
+    ]) {
         const result = solveSudoku(parsePuzzle(example.puzzle), {
             variant: 'antiknight',
         })

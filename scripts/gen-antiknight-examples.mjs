@@ -41,9 +41,7 @@ function mulberry32(seed) {
 }
 
 function boxesOf(cell) {
-    return (
-        Math.floor(Math.floor(cell / 9) / 3) * 3 + Math.floor((cell % 9) / 3)
-    )
+    return Math.floor(Math.floor(cell / 9) / 3) * 3 + Math.floor((cell % 9) / 3)
 }
 
 function rowsOf(cell) {
@@ -103,7 +101,10 @@ function countAntiknightSolutions(input, cutoff = 2) {
             colUsed[colsOf(cell)] |
             boxUsed[boxesOf(cell)] |
             emptiesLikePeers(cell, empties, values)
-        for (const digit of shuffled([1, 2, 3, 4, 5, 6, 7, 8, 9], randomForSearch)) {
+        for (const digit of shuffled(
+            [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            randomForSearch,
+        )) {
             const mask = DIGIT_MASKS[digit]
             if (forbidden & mask) continue
             values[cell] = digit
@@ -238,7 +239,8 @@ function main() {
             weight: analysis.maxWeight,
             techniques: analysis.techniques,
         }
-        if (analysis.techniques.includes('knight-pair')) buckets.pair.push(entry)
+        if (analysis.techniques.includes('knight-pair'))
+            buckets.pair.push(entry)
         else if (analysis.techniques.includes('knight-pointing'))
             buckets.pointing.push(entry)
         else if (analysis.techniques.includes('knight-claiming'))

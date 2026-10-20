@@ -554,9 +554,9 @@ export function findKnightPair(board: MutableBoard): SolveStep | null {
             if (targets.length === 0) continue
 
             const removed = targets.flatMap((cell) =>
-                maskToDigits(board.candidates[cell] & board.candidates[left]).map(
-                    (digit) => ({ cell, digit }),
-                ),
+                maskToDigits(
+                    board.candidates[cell] & board.candidates[left],
+                ).map((digit) => ({ cell, digit })),
             )
             const links: ChainLink[] = [
                 ...digits.map((digit) => ({
@@ -1599,8 +1599,7 @@ const TECHNIQUES: RegisteredTechnique[] = [
             label: '马步指向',
             weight: 35,
             category: 'antiknight',
-            description:
-                '宫内某候选全部与同一格马步互见，可从该格删除此候选。',
+            description: '宫内某候选全部与同一格马步互见，可从该格删除此候选。',
         },
         findKnightPointing,
     ),
